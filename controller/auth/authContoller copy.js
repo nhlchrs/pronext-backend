@@ -96,8 +96,8 @@ export const register = async (req, res) => {
     }).save();
 
     await sendOtpSms(Phone, otp);
-    // await sendOtpEmail(email, otp);
-// 
+    await sendOtpEmail(email, otp);
+
     return successResponse(
       res,
       `User created successfully. OTP sent to your phone and email.`
@@ -187,9 +187,9 @@ export const resendOtp = async (req, res) => {
     if (user.Phone) {
       await sendOtpSms(user.Phone, newOtp);
     }
-    // if (user.email) {
-    //   await sendOtpEmail(user.email, newOtp);
-    // }
+    if (user.email) {
+      await sendOtpEmail(user.email, newOtp);
+    }
 
     return successResponseWithData(res, "OTP resent successfully", {
       email: user.email,
@@ -237,9 +237,9 @@ export const login = async (req, res) => {
     if (user.Phone) {
       await sendOtpSms(user.Phone, otp);
     }
-    // if (user.email) {
-    //   await sendOtpEmail(user.email, otp);
-    // }
+    if (user.email) {
+      await sendOtpEmail(user.email, otp);
+    }
 
     // 🧾 JWT Payload
     const jwtPayload = {
