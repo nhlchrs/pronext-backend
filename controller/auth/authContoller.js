@@ -1,6 +1,8 @@
 import { compairPassword, hashPassword } from "../../middleware/authMiddleware.js";
 import userModel from "../../models/authModel.js";
 import Jwt from "jsonwebtoken";
+import twilio from "twilio";
+import nodemailer from "nodemailer";
 import {
   ErrorResponse,
   successResponse,
@@ -9,16 +11,78 @@ import {
 } from "../../helpers/apiResponse.js";
     const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
+const client = twilio(
+  "ACb7266ba24e021877ca84a0a7d8f40985",
+  "dc5f3cb615c47bd88a174f6c8dc08a15"   
+);
+
+const TWILIO_PHONE_NUMBER = "+14452757954"; 
+
+export const sendOtpSms = async (phone, otp) => {
+  if (!phone) {
+    console.error(" No phone number provided to sendOtpSms()");
+    return;
+  }
+
+  try {
+    await client.messages.create({
+      body: `Your login OTP is ${otp}. It is valid for 1 minute.`,
+      from: TWILIO_PHONE_NUMBER,
+      to: phone.startsWith("+") ? phone : `+91${phone}`,
+    });
+
+    console.log(` OTP SMS sent successfully to: ${phone}`);
+  } catch (error) {
+    console.error("Error sending OTP SMS:", error.message);
+  }
+};
+
+export const sendOtpEmail = async (email, otp) => {
+  if (!email) {
+    console.error(" No email provided to sendOtpEmail()");
+    return;
+  }
+
+  try {
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    await transporter.sendMail({
+      from: `"Opt" <${process.env.EMAIL_USER}>`,
+      to: email, 
+      subject: "Your OTP Code",
+      html: `
+        <h2>🔐 Login OTP</h2>
+        <p>Your one-time password (OTP) is:</p>
+        <h3 style="color:#2E86C1;">${otp}</h3>
+        <p>This code is valid for <b>1 minute</b>.</p>
+      `,
+    });
+
+    console.log(`✅ OTP sent via Email to: ${email}`);
+  } catch (error) {
+    console.error("❌ Error sending OTP Email:", error.message);
+  }
+};
 export const register = async (req, res) => {
   try {
     const { fname, lname, email, password, Phone, Address, ReferralCode, role } = req.body;
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
-      return ErrorResponse(res, "User already Exist");
+      return ErrorResponse(res, "User already exists");
     }
 
     const hashedPassword = await hashPassword(password);
 
+    const otp = generateOTP();
      await new userModel({
       fname,
       lname,
@@ -27,16 +91,23 @@ export const register = async (req, res) => {
       Phone,
       Address,
       ReferralCode,
-       role: role ,
-       otp : generateOTP()
+      role: role,
+      otp,
     }).save();
-    return successResponse(res, `User created successfully ${otp}`);
+
+    await sendOtpSms(Phone, otp);
+    await sendOtpEmail(email, otp);
+
+    return successResponse(
+      res,
+      `User created successfully. OTP sent to your phone and email.`
+    );
   } catch (err) {
-    console.log(err);
+    console.error(" Error in register:", err);
     res.status(500).send({
       success: false,
-      message: "Error while Registering",
-      err,
+      message: "Error while registering",
+      error: err.message,
     });
   }
 };
@@ -113,10 +184,17 @@ export const resendOtp = async (req, res) => {
     user.otp = newOtp;
     await user.save();
 
+    if (user.Phone) {
+      await sendOtpSms(user.Phone, newOtp);
+    }
+    if (user.email) {
+      await sendOtpEmail(user.email, newOtp);
+    }
 
-    return successResponseWithData(res, `OTP resent successfully ${otp}`, {
+    return successResponseWithData(res, "OTP resent successfully", {
       email: user.email,
-      otp: newOtp, 
+      phone: user.Phone,
+      message: "OTP has been sent to your registered phone and email.",
     });
   } catch (error) {
     console.error("Error while resending OTP:", error);
@@ -128,54 +206,73 @@ export const resendOtp = async (req, res) => {
   }
 };
 
+
 export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
+
+    // 🧩 Validate input
     if (!email || !password) {
-      return notFoundResponse(res, "Email or Password wrong");
+      return ErrorResponse(res, "Email and Password are required");
     }
+
+    // 🔍 Check if user exists
     const user = await userModel.findOne({ email });
     if (!user) {
-      return notFoundResponse(res, "Email  not found");
-     
+      return notFoundResponse(res, "Email not found");
     }
 
+    // 🔑 Verify password
     const match = await compairPassword(password, user.password);
-
     if (!match) {
-      return ErrorResponse(res, " Password wrong");
-     
+      return ErrorResponse(res, "Invalid password");
     }
-        const otp = generateOTP();
+
+    // 🔹 Generate OTP
+    const otp = generateOTP();
     user.otp = otp;
     await user.save();
 
-    const additionalData = {
+    // 🔹 Send OTP via SMS & Email dynamically
+    if (user.Phone) {
+      await sendOtpSms(user.Phone, otp);
+    }
+    if (user.email) {
+      await sendOtpEmail(user.email, otp);
+    }
+
+    // 🧾 JWT Payload
+    const jwtPayload = {
+      _id: user._id,
       email: user.email,
       name: user.fname,
-      password: user.password,
-      createdAt: user.createdAt,
+      role: user.role,
     };
-    const jwtPayload = { _id: user._id, ...additionalData };
 
-    const token = await Jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+    // 🔑 Generate JWT Token
+    const token = Jwt.sign(jwtPayload, process.env.JWT_SECRET, {
       expiresIn: "1d",
     });
-    return successResponseWithData(res, `Login successfully ${otp} `,{
+
+    // ✅ Response
+    return successResponseWithData(res, "Login successful. OTP sent to your registered phone and email.", {
       user: {
-          id: user._id,
-          name: user.fname,
-          lname: user.lname,
-          email: user.email,
-          role : user.role,
-          phone: user.phone,
-      }, token
-  });
-    
+        id: user._id,
+        name: user.fname,
+        lname: user.lname,
+        email: user.email,
+        role: user.role,
+        phone: user.Phone,
+      },
+      token,
+    });
+
   } catch (error) {
-    res.status(500).send({
+    console.error("❌ Error during login:", error);
+    return res.status(500).send({
       success: false,
-      message: "Error while login.....",
+      message: "Error while logging in",
+      error: error.message,
     });
   }
 };
