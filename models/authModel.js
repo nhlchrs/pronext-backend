@@ -16,16 +16,16 @@ const UserSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
-    Phone:{
+    phone:{
         type: String,
         required: true,
     },
     
-    Address: {
+    address: {
         type: String,
     },
     
-    ReferralCode : {
+    referralCode : {
         type: String,
         
     },
@@ -37,6 +37,18 @@ const UserSchema = new mongoose.Schema({
         type: String,
         default : "",
     },
+  dailyLoginCount: {
+    type: Number,
+    default: 0,
+  },
+  lastLoginDate: {
+    type: Date,
+    default: null,
+  },
+  isSuspended: {
+    type: Boolean,
+    default: false,
+  },
 
     role: {
         type: String,

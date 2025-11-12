@@ -74,7 +74,7 @@ export const sendOtpEmail = async (email, otp) => {
 };
 export const register = async (req, res) => {
   try {
-    const { fname, lname, email, password, Phone, Address, ReferralCode, role } = req.body;
+    const { fname, lname, email, password, phone, address, referralCode, role } = req.body;
     const existingUser = await userModel.findOne({ email });
     if (existingUser) {
       return ErrorResponse(res, "User already exists");
@@ -88,14 +88,14 @@ export const register = async (req, res) => {
       lname,
       email,
       password: hashedPassword,
-      Phone,
-      Address,
-      ReferralCode,
+      phone,
+      address,
+      referralCode,
       role: role,
       otp,
     }).save();
 
-    await sendOtpSms(Phone, otp);
+    await sendOtpSms(phone, otp);
     // await sendOtpEmail(email, otp);
 // 
     return successResponse(
@@ -211,15 +211,16 @@ export const login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 🧩 Validate input
     if (!email || !password) {
       return ErrorResponse(res, "Email and Password are required");
     }
 
-    // 🔍 Check if user exists
     const user = await userModel.findOne({ email });
     if (!user) {
-      return notFoundResponse(res, "Email not found");
+      return notFoundResponse(res, "User not found");
+    }
+    if (user.isSuspended) {
+      return ErrorResponse(res, "Your account is temporarily suspended. Please contact support.");
     }
 
     // 🔑 Verify password
@@ -228,47 +229,50 @@ export const login = async (req, res) => {
       return ErrorResponse(res, "Invalid password");
     }
 
-    // 🔹 Generate OTP
+    const today = new Date().toDateString();
+    const lastLoginDate = user.lastLoginDate
+      ? new Date(user.lastLoginDate).toDateString()
+      : null;
+    if (today !== lastLoginDate) {
+      user.dailyLoginCount = 0;
+    }
+
+    if (user.dailyLoginCount >= 5) {
+      user.isSuspended = true;
+      await user.save();
+      return ErrorResponse(
+        res,
+        "Daily login limit exceeded. Your account has been temporarily suspended. Please contact support."
+      );
+    }
+    user.dailyLoginCount += 1;
+    user.lastLoginDate = new Date();
+
     const otp = generateOTP();
     user.otp = otp;
     await user.save();
 
-    // 🔹 Send OTP via SMS & Email dynamically
-    if (user.Phone) {
-      await sendOtpSms(user.Phone, otp);
+    if (user.phone) {
+      await sendOtpSms(user.phone, otp);
     }
-    // if (user.email) {
-    //   await sendOtpEmail(user.email, otp);
-    // }
 
-    // 🧾 JWT Payload
-    const jwtPayload = {
-      _id: user._id,
-      email: user.email,
-      name: user.fname,
-      role: user.role,
-    };
-
-    // 🔑 Generate JWT Token
-    const token = Jwt.sign(jwtPayload, process.env.JWT_SECRET, {
-      expiresIn: "1d",
-    });
-
-    // ✅ Response
-    return successResponseWithData(res, "Login successful. OTP sent to your registered phone and email.", {
-      user: {
-        id: user._id,
-        name: user.fname,
-        lname: user.lname,
-        email: user.email,
-        role: user.role,
-        phone: user.Phone,
-      },
-      token,
-    });
+    return successResponseWithData(
+      res,
+      `Login successful. (${user.dailyLoginCount}/5 logins used today). OTP sent to your registered phone/email.`,
+      {
+        user: {
+          id: user._id,
+          name: `${user.fname} ${user.lname}`,
+          email: user.email,
+          role: user.role,
+          phone: user.phone,
+          loginsToday: user.dailyLoginCount,
+        },
+      }
+    );
 
   } catch (error) {
-    console.error("❌ Error during login:", error);
+    console.error("Error during login:", error);
     return res.status(500).send({
       success: false,
       message: "Error while logging in",
@@ -276,6 +280,7 @@ export const login = async (req, res) => {
     });
   }
 };
+
 
 export const getAllUsersExceptLoggedIn = async (req, res) => {
   try {
