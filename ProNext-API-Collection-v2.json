@@ -1,0 +1,1655 @@
+{
+  "info": {
+    "_postman_id": "pronext-backend-api-v2",
+    "name": "ProNext Backend API - v2.0",
+    "description": "Complete ProNext Platform Backend API\nIncludes: Auth, Users, Teams, Meetings, Announcements, Files, Analytics, KYC, Payouts, Commissions, Incentives",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "12345678"
+  },
+  "item": [
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fname\": \"John\",\n  \"lname\": \"Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"Test@1234\",\n  \"phone\": \"+919876543210\",\n  \"address\": \"123 Street, City\",\n  \"referralCode\": \"optional-referral-code\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "register"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "verify"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"Test@1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "login"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"method\": \"email\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/resendOtp",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "resendOtp"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👤 User Management",
+      "item": [
+        {
+          "name": "Get User Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/user/profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fname\": \"John\",\n  \"lname\": \"Doe\",\n  \"email\": \"john@example.com\",\n  \"phone\": \"+919876543210\",\n  \"address\": \"123 Street, City\",\n  \"dob\": \"1990-01-01\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/user/update-profile",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "update-profile"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"oldPassword\": \"Test@1234\",\n  \"newPassword\": \"NewPass@1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/user/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "change-password"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete User Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"password\": \"Test@1234\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/user/delete-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "delete-account"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Users (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/users",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "users"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get User by ID (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/user/{{userId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "user",
+                "{{userId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Suspend User (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Violation of terms\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/user/{{userId}}/suspend",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "user",
+                "{{userId}}",
+                "suspend"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reactivate User (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/user/{{userId}}/reactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "user",
+                "{{userId}}",
+                "reactivate"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔑 KYC & Verification",
+      "item": [
+        {
+          "name": "Submit KYC Document",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"documentType\": \"aadhar\",\n  \"documentNumber\": \"123456789012\",\n  \"fullName\": \"John Doe\",\n  \"dateOfBirth\": \"1990-01-01\",\n  \"gender\": \"Male\",\n  \"address\": {\n    \"street\": \"123 Street\",\n    \"city\": \"City\",\n    \"state\": \"State\",\n    \"zipCode\": \"123456\",\n    \"country\": \"India\"\n  },\n  \"documentImageUrl\": \"https://example.com/aadhar-front.jpg\",\n  \"backImageUrl\": \"https://example.com/aadhar-back.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/kyc/submit",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "kyc",
+                "submit"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get KYC Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/kyc/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "kyc",
+                "status"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Verify KYC (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kycId\": \"{{kycId}}\",\n  \"status\": \"verified\",\n  \"notes\": \"Document verified successfully\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/kyc/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "kyc",
+                "verify"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Reject KYC (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kycId\": \"{{kycId}}\",\n  \"reason\": \"Document unclear. Please resubmit.\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/kyc/reject",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "kyc",
+                "reject"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💰 Commissions",
+      "item": [
+        {
+          "name": "Get My Commissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commissions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commissions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Commission Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commissions/{{commissionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commissions",
+                "{{commissionId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Commission by Type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commissions/type/direct_bonus",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commissions",
+                "type",
+                "direct_bonus"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Commission Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/commissions/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "commissions",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Commission (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"commissionId\": \"{{commissionId}}\",\n  \"status\": \"approved\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/commissions/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "commissions",
+                "approve"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "💳 Payouts",
+      "item": [
+        {
+          "name": "Request Payout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 5000,\n  \"payoutMethod\": \"bank_transfer\",\n  \"bankDetails\": {\n    \"accountHolderName\": \"John Doe\",\n    \"accountNumber\": \"1234567890123456\",\n    \"ifscCode\": \"SBIN0001234\",\n    \"bankName\": \"State Bank of India\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/payouts/request",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payouts",
+                "request"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Payouts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payouts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payouts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Payout Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/payouts/{{payoutId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "payouts",
+                "{{payoutId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Approve Payout (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payoutId\": \"{{payoutId}}\",\n  \"taxPercentage\": 18,\n  \"notes\": \"Approved for processing\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/payouts/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "payouts",
+                "approve"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Payout Completed (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"payoutId\": \"{{payoutId}}\",\n  \"transactionId\": \"TRANS123456789\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/payouts/complete",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "payouts",
+                "complete"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🎁 Incentives",
+      "item": [
+        {
+          "name": "Get My Incentives",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/incentives",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incentives"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Incentive Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/incentives/{{incentiveId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incentives",
+                "{{incentiveId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Claim Incentive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"incentiveId\": \"{{incentiveId}}\",\n  \"termsAccepted\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/incentives/claim",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "incentives",
+                "claim"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Incentive (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"incentiveType\": \"milestone_achievement\",\n  \"title\": \"Top Referrer Award\",\n  \"description\": \"Award for referring 50+ users\",\n  \"amount\": 10000,\n  \"rewardPoints\": 500,\n  \"criteria\": {\n    \"minDirectReferrals\": 50,\n    \"minTotalDownline\": 200\n  },\n  \"tier\": \"gold\",\n  \"validFrom\": \"2025-01-01\",\n  \"validTo\": \"2025-12-31\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/incentives/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "incentives",
+                "create"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "👥 Team Management",
+      "item": [
+        {
+          "name": "Get My Team",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/my-team",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                "my-team"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Referral Code",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/referral-code",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                "referral-code"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Team Statistics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/team/stats",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "team",
+                "stats"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Team (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"teamName\": \"Sales Team Alpha\",\n  \"teamLead\": \"{{userId}}\",\n  \"description\": \"High performing sales team\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/teams/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "teams",
+                "create"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔔 Sessions",
+      "item": [
+        {
+          "name": "Get Active Session",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/session/active",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "session",
+                "active"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "logout"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Logout All Sessions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/logout-all",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "logout-all"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📅 Meetings",
+      "item": [
+        {
+          "name": "Get Available Meetings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/user/available-meetings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "user",
+                "available-meetings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Upcoming Meetings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meeting/upcoming",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meeting",
+                "upcoming"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Meeting Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meeting/{{meetingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meeting",
+                "{{meetingId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Join Meeting",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/meeting/{{meetingId}}/join",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "meeting",
+                "{{meetingId}}",
+                "join"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Meeting (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Weekly Sales Training\",\n  \"description\": \"Training on new products and strategies\",\n  \"scheduledAt\": \"2025-12-24T14:00:00Z\",\n  \"duration\": 60,\n  \"allowedSubscriptionTiers\": [\"Premium\", \"Pro\"],\n  \"maxAttendees\": 100,\n  \"topic\": \"Sales Training\",\n  \"tags\": [\"training\", \"sales\"],\n  \"isRecorded\": true\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/meeting/create",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "meeting",
+                "create"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📣 Announcements",
+      "item": [
+        {
+          "name": "Get All Announcements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/announcement/announcements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "announcement",
+                "announcements"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Announcement by Type",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/announcement/announcements/type/announcement",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "announcement",
+                "announcements",
+                "type",
+                "announcement"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Announcement by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/announcement/announcements/{{announcementId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "announcement",
+                "announcements",
+                "{{announcementId}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Track Announcement Click",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/announcement/announcements/{{announcementId}}/click",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "announcement",
+                "announcements",
+                "{{announcementId}}",
+                "click"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Create Announcement (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"New Product Launch\",\n  \"description\": \"Exciting new product feature launches this week\",\n  \"type\": \"announcement\",\n  \"flag\": \"important\",\n  \"startDate\": \"2025-12-24\",\n  \"endDate\": \"2025-12-31\",\n  \"image\": \"https://example.com/product.jpg\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/announcement/announcements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "announcement",
+                "announcements"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📊 Analytics",
+      "item": [
+        {
+          "name": "Get Dashboard Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/dashboard/summary?dateRange=30",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "dashboard",
+                "summary"
+              ],
+              "query": [
+                {
+                  "key": "dateRange",
+                  "value": "30"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Payout Trends",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/payout-trends",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "payout-trends"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Subscription Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/subscriptions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "subscriptions"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Team Growth Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/team-growth",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "team-growth"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Performance Metrics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/performance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "performance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Generate Excel Report",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reportType\": \"payouts\",\n  \"dateRange\": {\n    \"startDate\": \"2025-12-01\",\n    \"endDate\": \"2025-12-31\"\n  },\n  \"filters\": {\n    \"status\": \"completed\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/admin/analytics/report/excel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "admin",
+                "analytics",
+                "report",
+                "excel"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "📁 Files",
+      "item": [
+        {
+          "name": "Upload File",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/upload/upload",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload",
+                "upload"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get All Files",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/upload/",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload",
+                ""
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get File by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "{{token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/upload/{{fileId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "upload",
+                "{{fileId}}"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔗 Real-time (Socket.io)",
+      "description": "Socket.io events for real-time features",
+      "item": [
+        {
+          "name": "User Events",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "Connect to WebSocket\n\nEmit Events:\n- socket.emit('user_online', userId)\n- socket.emit('user_offline', userId)\n- socket.emit('subscribe_notifications', userId)\n- socket.emit('unsubscribe_notifications', userId)\n\nListen Events:\n- socket.on('notification', (data) => {})\n- socket.on('user_status_changed', (data) => {})"
+          }
+        },
+        {
+          "name": "Subscribe to Notifications",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "// In your frontend code:\nconst socket = io('http://localhost:5000');\n\n// Subscribe to notifications\nsocket.emit('subscribe_notifications', userId);\n\n// Listen for notifications\nsocket.on('notification', (data) => {\n  console.log('Notification:', data);\n  // data.type = 'commission_earned', 'payout_update', etc.\n});"
+          }
+        },
+        {
+          "name": "Subscribe to Payout Updates",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "// Subscribe to payout updates\nsocket.emit('subscribe_payout_updates', userId);\n\n// Listen for payout status changes\nsocket.on('payout_status', (payoutData) => {\n  console.log('Payout Status:', payoutData.status);\n});"
+          }
+        },
+        {
+          "name": "Subscribe to Analytics",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "ws://{{baseUrl}}",
+              "host": [
+                "{{baseUrl}}"
+              ]
+            },
+            "description": "// Subscribe to real-time analytics\nsocket.emit('subscribe_analytics');\n\n// Listen for analytics updates\nsocket.on('analytics_update', (analyticsData) => {\n  console.log('Analytics Updated:', analyticsData);\n});"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "JWT Token - Get this from login response"
+    },
+    {
+      "key": "userId",
+      "value": "",
+      "type": "string",
+      "description": "User ID from database"
+    },
+    {
+      "key": "commissionId",
+      "value": "",
+      "type": "string",
+      "description": "Commission ID"
+    },
+    {
+      "key": "payoutId",
+      "value": "",
+      "type": "string",
+      "description": "Payout ID"
+    },
+    {
+      "key": "incentiveId",
+      "value": "",
+      "type": "string",
+      "description": "Incentive ID"
+    },
+    {
+      "key": "kycId",
+      "value": "",
+      "type": "string",
+      "description": "KYC Document ID"
+    },
+    {
+      "key": "meetingId",
+      "value": "",
+      "type": "string",
+      "description": "Meeting ID"
+    },
+    {
+      "key": "announcementId",
+      "value": "",
+      "type": "string",
+      "description": "Announcement ID"
+    },
+    {
+      "key": "fileId",
+      "value": "",
+      "type": "string",
+      "description": "File ID"
+    }
+  ]
+}
