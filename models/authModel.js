@@ -108,14 +108,79 @@ const UserSchema = new mongoose.Schema({
     type: String,
     enum: ["Basic", "Premium", "Pro"],
     default: "Basic",
+    index: true,
   },
-
-    role: {
-        type: String,
-        enum: ["Admin", "Finance", "Support", "Educator"],
-        default: "Educator"
-    },
-   
+  subscriptionExpiryDate: {
+    type: Date,
+    default: null,
+  },
+  level: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 4,
+    index: true,
+  },
+  teamId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Team",
+    default: null,
+  },
+  sponsorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+    index: true,
+  },
+  kycStatus: {
+    type: String,
+    enum: ["pending", "verified", "rejected", "expired"],
+    default: "pending",
+    index: true,
+  },
+  kycVerifiedAt: {
+    type: Date,
+    default: null,
+  },
+  kycVerifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
+  kycDocumentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "KYCDocument",
+    default: null,
+  },
+  totalCommissionEarned: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  totalPayoutRequested: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  walletBalance: {
+    type: Number,
+    default: 0,
+    min: 0,
+  },
+  directReferralCount: {
+    type: Number,
+    default: 0,
+    index: true,
+  },
+  totalDownlineCount: {
+    type: Number,
+    default: 0,
+  },
+  role: {
+    type: String,
+    enum: ["Admin", "Finance", "Support", "Educator"],
+    default: "Educator"
+  },
 }, { timestamps: true });
 
 export default mongoose.model("Users", UserSchema);
