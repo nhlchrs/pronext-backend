@@ -10,6 +10,7 @@ import {
   successResponseWithData
 } from "../../helpers/apiResponse.js";
 import paymentModel from "../../models/paymentModel.js";
+import { createSession, enforceSignleSession } from "../session/sessionController.js";
     const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
 
 const client = twilio(
@@ -253,6 +254,24 @@ export const login = async (req, res) => {
     user.otp = otp;
     await user.save();
 
+    // 🔐 Enforce single session (logout all previous sessions)
+    await enforceSignleSession(user._id);
+
+    // 🎫 Generate JWT token
+    const jwtPayload = {
+      _id: user._id,
+      name: `${user.fname} ${user.lname}`,
+      email: user.email,
+      role: user.role,
+    };
+
+    const token = Jwt.sign(jwtPayload, process.env.JWT_SECRET, {
+      expiresIn: "1d",
+    });
+
+    // 📝 Create session record
+    await createSession(user._id, token, req);
+
     if (user.phone) {
       // await sendOtpSms(user.phone, otp);
     }
@@ -269,6 +288,7 @@ export const login = async (req, res) => {
           phone: user.phone,
           loginsToday: user.dailyLoginCount,
         },
+        token,
       }
     );
 

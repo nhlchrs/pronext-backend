@@ -1,0 +1,675 @@
+{
+  "info": {
+    "name": "ProNext Backend API - Complete Collection",
+    "description": "Complete API collection for ProNext Platform - User Panel & Admin Panel with all implemented endpoints",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "version": "1.0.0"
+  },
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Register User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fname\": \"John\",\n  \"lname\": \"Doe\",\n  \"email\": \"john@example.com\",\n  \"password\": \"Password123\",\n  \"phone\": \"+919876543210\",\n  \"address\": \"123 Street, City\",\n  \"role\": \"Educator\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/register",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "register"]
+            }
+          }
+        },
+        {
+          "name": "Login User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"john@example.com\",\n  \"password\": \"Password123\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5000/api/login",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5000",
+              "path": ["api", "login"]
+            }
+          }
+        },
+        {
+          "name": "Verify OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"john@example.com\",\n  \"otp\": \"123456\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/verify", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "verify"]}
+          }
+        },
+        {
+          "name": "Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}],
+            "body": {"mode": "raw", "raw": "{\n  \"email\": \"john@example.com\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/resendOtp", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "resendOtp"]}
+          }
+        },
+        {
+          "name": "Get All Users",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/allusers", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "allusers"]}
+          }
+        },
+        {
+          "name": "Get User by ID",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"id\": \"USER_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/getUserbyId", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "getUserbyId"]}
+          }
+        },
+        {
+          "name": "Logout User",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/logout", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "logout"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Sessions Management",
+      "item": [
+        {
+          "name": "Create Session",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Python Basics\",\n  \"description\": \"Introduction to Python\",\n  \"startTime\": \"2025-02-01T10:00:00Z\",\n  \"endTime\": \"2025-02-01T11:30:00Z\",\n  \"capacity\": 50,\n  \"level\": \"Beginner\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "create"]}
+          }
+        },
+        {
+          "name": "Get All Sessions",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/session?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Get Session by ID",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/SESSION_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "SESSION_ID"]}
+          }
+        },
+        {
+          "name": "Update Session",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Updated Title\",\n  \"capacity\": 75\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/SESSION_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "SESSION_ID"]}
+          }
+        },
+        {
+          "name": "Delete Session",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/SESSION_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "SESSION_ID"]}
+          }
+        },
+        {
+          "name": "Enroll in Session",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"sessionId\": \"SESSION_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/enroll", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "enroll"]}
+          }
+        },
+        {
+          "name": "Get Enrolled Sessions",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/enrolled", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "enrolled"]}
+          }
+        },
+        {
+          "name": "Unenroll from Session",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"sessionId\": \"SESSION_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/unenroll", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "unenroll"]}
+          }
+        },
+        {
+          "name": "Add Attendee (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"sessionId\": \"SESSION_ID\",\n  \"userId\": \"USER_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/add-attendee", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "add-attendee"]}
+          }
+        },
+        {
+          "name": "Get Session Attendees",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/SESSION_ID/attendees", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "SESSION_ID", "attendees"]}
+          }
+        },
+        {
+          "name": "Complete Session (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/SESSION_ID/complete", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "SESSION_ID", "complete"]}
+          }
+        },
+        {
+          "name": "Get Session Statistics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/session/stats", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "stats"]}
+          }
+        },
+        {
+          "name": "Get All Sessions (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/sessions?page=1&limit=20", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "sessions"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}
+          }
+        },
+        {
+          "name": "Remove Attendee (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"sessionId\": \"SESSION_ID\",\n  \"userId\": \"USER_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/session/remove-attendee", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "session", "remove-attendee"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. User Management",
+      "item": [
+        {
+          "name": "Update User Profile",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"fname\": \"Jane\",\n  \"lname\": \"Smith\",\n  \"phone\": \"+919876543210\",\n  \"bio\": \"Passionate learner\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/user/profile/update", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "profile", "update"]}
+          }
+        },
+        {
+          "name": "Get User Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/dashboard", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "dashboard"]}
+          }
+        },
+        {
+          "name": "Get My Referrals",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/referrals?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "referrals"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Get My Earnings",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/earnings", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "earnings"]}
+          }
+        },
+        {
+          "name": "Get My Badges",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/badges", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "badges"]}
+          }
+        },
+        {
+          "name": "Get My Certificates",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/certificates", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "certificates"]}
+          }
+        },
+        {
+          "name": "Change Password",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"oldPassword\": \"oldPass123\",\n  \"newPassword\": \"newPass123\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/user/change-password", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "change-password"]}
+          }
+        },
+        {
+          "name": "Get My Notifications",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/notifications?page=1&limit=20", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "notifications"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}
+          }
+        },
+        {
+          "name": "Mark Notification as Read",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"notificationId\": \"NOTIF_ID\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/user/notification/read", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "notification", "read"]}
+          }
+        },
+        {
+          "name": "Get User Analytics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/analytics", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "analytics"]}
+          }
+        },
+        {
+          "name": "Upload Profile Picture",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "formdata", "formdata": [{"key": "avatar", "type": "file", "src": ""}]},
+            "url": {"raw": "http://localhost:5000/api/user/upload-avatar", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "upload-avatar"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Announcements",
+      "item": [
+        {
+          "name": "Create Announcement (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"System Maintenance\",\n  \"description\": \"We will perform maintenance on January 15\",\n  \"type\": \"announcement\",\n  \"flag\": \"important\",\n  \"startDate\": \"2025-01-15T00:00:00Z\",\n  \"endDate\": \"2025-01-16T00:00:00Z\",\n  \"targetUsers\": []\n}"},
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements"]}
+          }
+        },
+        {
+          "name": "Get All Announcements",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Get Announcement by ID",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/ANNOUNCEMENT_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "ANNOUNCEMENT_ID"]}
+          }
+        },
+        {
+          "name": "Get by Type",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/type/promotion?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "type", "promotion"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Get by Flag",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/flag/important?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "flag", "important"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Update Announcement (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Updated Title\",\n  \"flag\": \"promotional\"\n}"},
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/ANNOUNCEMENT_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "ANNOUNCEMENT_ID"]}
+          }
+        },
+        {
+          "name": "Delete Announcement (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/ANNOUNCEMENT_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "ANNOUNCEMENT_ID"]}
+          }
+        },
+        {
+          "name": "Get Personalized Feed",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/user/announcements/feed?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "user", "announcements", "feed"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Track Click",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/announcements/ANNOUNCEMENT_ID/click", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "announcements", "ANNOUNCEMENT_ID", "click"]}
+          }
+        },
+        {
+          "name": "Get Statistics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/announcement/admin/announcements/stats", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "admin", "announcements", "stats"]}
+          }
+        },
+        {
+          "name": "Bulk Update Status (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"ids\": [\"ANN_ID_1\", \"ANN_ID_2\"],\n  \"isActive\": false\n}"},
+            "url": {"raw": "http://localhost:5000/api/announcement/admin/announcements/bulk-status", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "announcement", "admin", "announcements", "bulk-status"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Files Management",
+      "item": [
+        {
+          "name": "Upload File",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "formdata", "formdata": [{"key": "file", "type": "file", "src": ""}, {"key": "title", "value": "Python Basics", "type": "text"}, {"key": "type", "value": "ppt", "type": "text"}]},
+            "url": {"raw": "http://localhost:5000/api/upload/upload", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "upload", "upload"]}
+          }
+        },
+        {
+          "name": "Get All Files",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/upload?type=ppt&isActive=true", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "upload"], "query": [{"key": "type", "value": "ppt"}, {"key": "isActive", "value": "true"}]}
+          }
+        },
+        {
+          "name": "Get File by ID",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/upload/FILE_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "upload", "FILE_ID"]}
+          }
+        },
+        {
+          "name": "Update File",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{token}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Updated Title\",\n  \"isActive\": true\n}"},
+            "url": {"raw": "http://localhost:5000/api/upload/FILE_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "upload", "FILE_ID"]}
+          }
+        },
+        {
+          "name": "Delete File",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/upload/FILE_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "upload", "FILE_ID"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Meetings & Webinars",
+      "item": [
+        {
+          "name": "Create Meeting (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Advanced JavaScript Workshop\",\n  \"description\": \"Learn advanced concepts\",\n  \"startTime\": \"2025-01-25T10:00:00Z\",\n  \"duration\": 60,\n  \"maxAttendees\": 50\n}"},
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/create", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "create"]}
+          }
+        },
+        {
+          "name": "Get All Meetings (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meetings?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meetings"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Update Meeting (Admin)",
+          "request": {
+            "method": "PUT",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"title\": \"Updated Title\",\n  \"maxAttendees\": 100\n}"},
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID"]}
+          }
+        },
+        {
+          "name": "Cancel Meeting (Admin)",
+          "request": {
+            "method": "DELETE",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID"]}
+          }
+        },
+        {
+          "name": "Share Meeting by Tier (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "body": {"mode": "raw", "raw": "{\n  \"tiers\": [\"Pro\", \"Premium\"]\n}"},
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID/share", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID", "share"]}
+          }
+        },
+        {
+          "name": "Get Meeting Attendees (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID/attendees?page=1&limit=20", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID", "attendees"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "20"}]}
+          }
+        },
+        {
+          "name": "Start Meeting (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID/start", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID", "start"]}
+          }
+        },
+        {
+          "name": "End Meeting (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meeting/MEETING_ID/end", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting", "MEETING_ID", "end"]}
+          }
+        },
+        {
+          "name": "Get Meeting Statistics (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/admin/meeting-stats", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "admin", "meeting-stats"]}
+          }
+        },
+        {
+          "name": "Get Available Meetings (User)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/user/available-meetings?page=1&limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "user", "available-meetings"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "Get Upcoming Meetings (User)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/meeting/upcoming", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "meeting", "upcoming"]}
+          }
+        },
+        {
+          "name": "Get Meeting Details (User)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/meeting/MEETING_ID", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "meeting", "MEETING_ID"]}
+          }
+        },
+        {
+          "name": "Join Meeting (User)",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+            "url": {"raw": "http://localhost:5000/api/meeting/MEETING_ID/join", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "meeting", "MEETING_ID", "join"]}
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. Dashboard & Analytics",
+      "item": [
+        {
+          "name": "1. Get Platform Metrics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/getUserPlatformMetrics", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "getUserPlatformMetrics"]}
+          }
+        },
+        {
+          "name": "2. Get Dashboard Visualizations",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/getDashboardVisualizations", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "getDashboardVisualizations"]}
+          }
+        },
+        {
+          "name": "3. Get User Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/users?startDate=2025-01-01&endDate=2025-12-31", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "users"], "query": [{"key": "startDate", "value": "2025-01-01"}, {"key": "endDate", "value": "2025-12-31"}]}
+          }
+        },
+        {
+          "name": "4. Get Session Analytics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/sessions?period=month", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "sessions"], "query": [{"key": "period", "value": "month"}]}
+          }
+        },
+        {
+          "name": "5. Get Earnings Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/earnings?month=January&year=2025", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "earnings"], "query": [{"key": "month", "value": "January"}, {"key": "year", "value": "2025"}]}
+          }
+        },
+        {
+          "name": "6. Get Engagement Metrics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/engagement", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "engagement"]}
+          }
+        },
+        {
+          "name": "7. Get Revenue Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/revenue?startDate=2025-01-01&endDate=2025-12-31", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "revenue"], "query": [{"key": "startDate", "value": "2025-01-01"}, {"key": "endDate", "value": "2025-12-31"}]}
+          }
+        },
+        {
+          "name": "8. Get Top Performers",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/top-performers?limit=10", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "top-performers"], "query": [{"key": "limit", "value": "10"}]}
+          }
+        },
+        {
+          "name": "9. Get User Activity Logs",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/activity-logs?page=1&limit=50", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "activity-logs"], "query": [{"key": "page", "value": "1"}, {"key": "limit", "value": "50"}]}
+          }
+        },
+        {
+          "name": "10. Get Growth Trends",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/growth-trends?period=6months", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "growth-trends"], "query": [{"key": "period", "value": "6months"}]}
+          }
+        },
+        {
+          "name": "11. Get Real-time Statistics",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/realtime", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "realtime"]}
+          }
+        },
+        {
+          "name": "12. Export Analytics Report",
+          "request": {
+            "method": "GET",
+            "header": [{"key": "Authorization", "value": "Bearer {{adminToken}}"}],
+            "url": {"raw": "http://localhost:5000/api/analytics/export?format=pdf&period=month", "protocol": "http", "host": ["localhost"], "port": "5000", "path": ["api", "analytics", "export"], "query": [{"key": "format", "value": "pdf"}, {"key": "period", "value": "month"}]}
+          }
+        }
+      ]
+    }
+  ]
+}

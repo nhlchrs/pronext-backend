@@ -53,6 +53,62 @@ const UserSchema = new mongoose.Schema({
     type: Boolean,
     default: false,
   },
+  suspensionReason: {
+    type: String,
+    default: null,
+  },
+  suspendedAt: {
+    type: Date,
+    default: null,
+  },
+  suspendedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
+  reactivatedAt: {
+    type: Date,
+    default: null,
+  },
+  reactivatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
+  isBlocked: {
+    type: Boolean,
+    default: false,
+  },
+  blockReason: {
+    type: String,
+    default: null,
+  },
+  blockedAt: {
+    type: Date,
+    default: null,
+  },
+  blockedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Users",
+    default: null,
+  },
+  isDeleted: {
+    type: Boolean,
+    default: false,
+  },
+  deletedAt: {
+    type: Date,
+    default: null,
+  },
+  dob: {
+    type: Date,
+    default: null,
+  },
+  subscriptionTier: {
+    type: String,
+    enum: ["Basic", "Premium", "Pro"],
+    default: "Basic",
+  },
 
     role: {
         type: String,
