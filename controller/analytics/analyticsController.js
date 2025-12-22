@@ -11,8 +11,11 @@ import {
   notFoundResponse,
   successResponseWithData,
 } from "../../helpers/apiResponse.js";
+import logger from "../../helpers/logger.js";
 import ExcelJS from "exceljs";
 import PDFDocument from "pdfkit";
+
+const analyticsLogger = logger.module("ANALYTICS_CONTROLLER");
 import fs from "fs";
 import path from "path";
 
@@ -24,11 +27,15 @@ export const getDashboardSummary = async (req, res) => {
   try {
     const { dateRange = "30" } = req.query; // 7, 30, 90, 365
 
+    analyticsLogger.start("Fetching dashboard summary", { dateRange });
+
     const days = parseInt(dateRange);
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
 
     // Get current metrics
+    analyticsLogger.debug("Calculating user metrics", { startDate });
+    
     const totalUsers = await userModel.countDocuments();
     const activeUsers = await userModel.countDocuments({
       isSuspended: false,
@@ -67,6 +74,8 @@ export const getDashboardSummary = async (req, res) => {
 
     const totalMeetingAttendees =
       meetingAttendees.length > 0 ? meetingAttendees[0].totalAttendees : 0;
+
+    analyticsLogger.success("Dashboard summary calculated", { totalUsers, newSignups, totalMeetings });
 
     const summary = {
       userMetrics: {

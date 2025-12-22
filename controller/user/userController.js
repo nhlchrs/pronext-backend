@@ -20,8 +20,11 @@ export const updateUserProfile = async (req, res) => {
     const userId = req.user._id;
     const { fname, lname, email, phone, dob, address } = req.body;
 
+    userLogger.start("Updating user profile", { userId });
+
     // Validate required fields
     if (!fname || !lname) {
+      userLogger.warn("Missing required fields for profile update", { userId });
       return ErrorResponse(res, "First name and last name are required", 400);
     }
 
@@ -32,6 +35,7 @@ export const updateUserProfile = async (req, res) => {
         _id: { $ne: userId },
       });
       if (existingUser) {
+        userLogger.warn("Email already in use", { email, userId });
         return ErrorResponse(res, "Email already in use", 400);
       }
     }
@@ -43,6 +47,7 @@ export const updateUserProfile = async (req, res) => {
         _id: { $ne: userId },
       });
       if (existingPhone) {
+        userLogger.warn("Phone number already in use", { phone, userId });
         return ErrorResponse(res, "Phone number already in use", 400);
       }
     }
@@ -64,9 +69,11 @@ export const updateUserProfile = async (req, res) => {
     });
 
     if (!updatedUser) {
+      userLogger.error("User not found for profile update", { userId });
       return notFoundResponse(res, "User not found");
     }
 
+    userLogger.success("User profile updated successfully", { userId });
     return successResponseWithData(
       res,
       updatedUser,

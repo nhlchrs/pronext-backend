@@ -6,12 +6,17 @@ import {
   ErrorResponse,
   notFoundResponse,
 } from "../../helpers/apiResponse.js";
+import logger from "../../helpers/logger.js";
+
+const sessionLogger = logger.module("SESSION_CONTROLLER");
 
 /* =========================
    CREATE SESSION (on login)
 ========================= */
 export const createSession = async (userId, token, req) => {
   try {
+    sessionLogger.start("Creating user session", { userId });
+
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 1); // 24 hours
 
@@ -24,9 +29,10 @@ export const createSession = async (userId, token, req) => {
       lastActivityTime: new Date(),
     });
 
+    sessionLogger.success("Session created successfully", { userId, sessionId: session._id, expiresAt });
     return session;
   } catch (error) {
-    console.error("Error creating session:", error);
+    sessionLogger.error("Error creating session", error);
     return null;
   }
 };
@@ -37,13 +43,17 @@ export const createSession = async (userId, token, req) => {
 ========================= */
 export const enforceSignleSession = async (userId) => {
   try {
+    sessionLogger.start("Enforcing single session for user", { userId });
+
     // Deactivate all previous active sessions
-    await SessionModel.updateMany(
+    const result = await SessionModel.updateMany(
       { user: userId, isActive: true },
       { isActive: false }
     );
+
+    sessionLogger.success("Previous sessions deactivated", { userId, deactivatedCount: result.modifiedCount });
   } catch (error) {
-    console.error("Error enforcing single session:", error);
+    sessionLogger.error("Error enforcing single session", error);
   }
 };
 
@@ -54,6 +64,8 @@ export const getActiveSession = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    sessionLogger.start("Fetching active session", { userId });
+
     const activeSession = await SessionModel.findOne({
       user: userId,
       isActive: true,
@@ -63,8 +75,11 @@ export const getActiveSession = async (req, res) => {
       .lean();
 
     if (!activeSession) {
+      sessionLogger.warn("No active session found", { userId });
       return notFoundResponse(res, "No active session found");
     }
+
+    sessionLogger.success("Active session retrieved", { userId, sessionId: activeSession._id });
 
     return successResponseWithData(
       res,
@@ -84,7 +99,7 @@ export const getActiveSession = async (req, res) => {
       }
     );
   } catch (error) {
-    console.error("Error getting active session:", error);
+    sessionLogger.error("Error getting active session", error);
     return res.status(500).json({
       success: false,
       message: "Error retrieving session",

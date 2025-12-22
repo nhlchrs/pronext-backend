@@ -6,6 +6,9 @@ import {
   notFoundResponse,
   successResponseWithData,
 } from "../../helpers/apiResponse.js";
+import logger from "../../helpers/logger.js";
+
+const meetingLogger = logger.module("MEETING_CONTROLLER");
 
 // Simulated Zoom API integration (replace with actual Zoom SDK)
 const zoomClient = {
@@ -41,8 +44,11 @@ export const createMeeting = async (req, res) => {
       isRecorded,
     } = req.body;
 
+    meetingLogger.start("Creating new meeting", { title, duration, scheduledAt });
+
     // Validate required fields
     if (!title || !scheduledAt || !duration) {
+      meetingLogger.warn("Missing required fields for meeting creation", { title, scheduledAt, duration });
       return ErrorResponse(
         res,
         "Title, scheduled time, and duration are required",
@@ -52,11 +58,13 @@ export const createMeeting = async (req, res) => {
 
     // Validate scheduledAt is in the future
     if (new Date(scheduledAt) <= new Date()) {
+      meetingLogger.warn("Meeting scheduled in the past", { scheduledAt });
       return ErrorResponse(res, "Meeting must be scheduled in the future", 400);
     }
 
     // Validate duration
     if (duration < 15 || duration > 480) {
+      meetingLogger.warn("Invalid meeting duration", { duration });
       return ErrorResponse(res, "Duration must be between 15 and 480 minutes", 400);
     }
 
@@ -65,6 +73,7 @@ export const createMeeting = async (req, res) => {
       const validTiers = ["Basic", "Premium", "Pro", "Free"];
       for (let tier of allowedSubscriptionTiers) {
         if (!validTiers.includes(tier)) {
+          meetingLogger.warn("Invalid subscription tier for meeting", { tier });
           return ErrorResponse(res, `Invalid subscription tier: ${tier}`, 400);
         }
       }
@@ -73,6 +82,7 @@ export const createMeeting = async (req, res) => {
     // Create Zoom meeting (mocked for now)
     let zoomMeeting;
     try {
+      meetingLogger.debug("Creating Zoom meeting", { title });
       zoomMeeting = await zoomClient.createMeeting(req.user._id, {
         title,
         startTime: scheduledAt,

@@ -6,18 +6,18 @@ import {
   ErrorResponse,
   notFoundResponse,
 } from "../../helpers/apiResponse.js";
+import logger from "../../helpers/logger.js";
 
-/**
- * Create Announcement/Promotion/News
- * POST /api/announcements/create
- * Admin only
- */
+const announcementLogger = logger.module("ANNOUNCEMENT_CONTROLLER");
 export const createAnnouncement = async (req, res) => {
   try {
     const { title, description, type, flag, image, startDate, endDate, targetUsers } = req.body;
 
+    announcementLogger.start("Creating announcement", { type, targetUsers: targetUsers?.length || 0 });
+
     // Validate required fields
     if (!title || !description || !type) {
+      announcementLogger.warn("Missing required fields for announcement creation", { title, description, type });
       return ErrorResponse(
         res,
         "Title, description, and type are required",
@@ -27,6 +27,7 @@ export const createAnnouncement = async (req, res) => {
 
     // Validate type
     if (!["announcement", "promotion", "news"].includes(type)) {
+      announcementLogger.warn("Invalid announcement type", { type });
       return ErrorResponse(
         res,
         "Type must be: announcement, promotion, or news",
@@ -36,6 +37,7 @@ export const createAnnouncement = async (req, res) => {
 
     // Validate flag
     if (flag && !["important", "promotional"].includes(flag)) {
+      announcementLogger.warn("Invalid announcement flag", { flag });
       return ErrorResponse(
         res,
         "Flag must be: important or promotional",
@@ -46,6 +48,7 @@ export const createAnnouncement = async (req, res) => {
     // Validate dates if provided
     if (startDate && endDate) {
       if (new Date(startDate) > new Date(endDate)) {
+        announcementLogger.warn("Invalid date range for announcement", { startDate, endDate });
         return ErrorResponse(res, "Start date must be before end date", 400);
       }
     }
@@ -64,13 +67,14 @@ export const createAnnouncement = async (req, res) => {
       clicks: 0,
     });
 
+    announcementLogger.success("Announcement created successfully", { announcementId: announcement._id, type });
     return successResponseWithData(
       res,
       announcement,
       "Announcement created successfully"
     );
   } catch (error) {
-    console.error("Create announcement error:", error);
+    announcementLogger.error("Error creating announcement", error);
     return ErrorResponse(res, error.message, 500);
   }
 };
@@ -90,6 +94,8 @@ export const getAllAnnouncements = async (req, res) => {
       limit = 10,
       sort = "createdAt",
     } = req.query;
+
+    announcementLogger.start("Fetching announcements", { type, isActive, page, limit });
 
     const skip = (page - 1) * limit;
     const filter = {};

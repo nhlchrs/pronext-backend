@@ -5,6 +5,9 @@ import {
   ErrorResponse,
   notFoundResponse,
 } from "../../helpers/apiResponse.js";
+import logger from "../../helpers/logger.js";
+
+const fileLogger = logger.module("FILE_CONTROLLER");
 
 /* =========================
    UPLOAD FILE
@@ -13,7 +16,10 @@ export const uploadFile = async (req, res) => {
   try {
     const { title, type, description } = req.body;
 
+    fileLogger.start("Uploading file", { title, type, userId: req.user._id });
+
     if (!req.file) {
+      fileLogger.warn("No file provided in upload request");
       return ErrorResponse(res, "File is required");
     }
 
@@ -25,9 +31,10 @@ export const uploadFile = async (req, res) => {
       uploadedBy: req.user._id,
     });
 
+    fileLogger.success("File uploaded successfully", { fileId: fileResource._id, title, size: req.file.size });
     return successResponseWithData(res, "File uploaded successfully", fileResource);
   } catch (error) {
-    console.error("File upload error:", error);
+    fileLogger.error("Error uploading file", error);
     return ErrorResponse(res, error.message || "Error uploading file");
   }
 };
@@ -38,6 +45,9 @@ export const uploadFile = async (req, res) => {
 export const getAllFiles = async (req, res) => {
   try {
     const { type, isActive } = req.query;
+
+    fileLogger.start("Fetching all files", { type, isActive });
+
     const filter = { isActive: true };
     if (type) filter.type = type;
     if (isActive !== undefined) filter.isActive = isActive === "true";
@@ -46,9 +56,10 @@ export const getAllFiles = async (req, res) => {
       .sort({ createdAt: -1 })
       .populate("uploadedBy", "fname lname email");
 
+    fileLogger.success("Files fetched successfully", { count: files.length, type });
     return successResponseWithData(res, "Files fetched successfully", files);
   } catch (error) {
-    console.error("Get files error:", error);
+    fileLogger.error("Error fetching files", error);
     return ErrorResponse(res, "Error fetching files");
   }
 };
@@ -59,12 +70,19 @@ export const getAllFiles = async (req, res) => {
 export const getFileById = async (req, res) => {
   try {
     const { id } = req.params;
-    const file = await FileResource.findById(id).populate("uploadedBy", "fname lname email");
-    if (!file) return notFoundResponse(res, "File not found");
 
+    fileLogger.start("Fetching file by ID", { fileId: id });
+
+    const file = await FileResource.findById(id).populate("uploadedBy", "fname lname email");
+    if (!file) {
+      fileLogger.warn("File not found", { fileId: id });
+      return notFoundResponse(res, "File not found");
+    }
+
+    fileLogger.success("File fetched successfully", { fileId: id, title: file.title });
     return successResponseWithData(res, "File fetched successfully", file);
   } catch (error) {
-    console.error("Get file by id error:", error);
+    fileLogger.error("Error fetching file by ID", error);
     return ErrorResponse(res, "Error fetching file");
   }
 };

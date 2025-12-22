@@ -9,6 +9,9 @@ import {
   getNextMilestone,
   checkLevelIncomQualification,
 } from "../helpers/bonusCalculator.js";
+import logger from "../../helpers/logger.js";
+
+const teamLogger = logger.module("TEAM_CONTROLLER");
 
 // Generate unique referral code
 export const generateReferralCode = (userId) => {
@@ -18,15 +21,22 @@ export const generateReferralCode = (userId) => {
 // Get or Create Team Member
 export const getOrCreateTeamMember = async (userId) => {
   try {
+    teamLogger.start("Getting or creating team member", { userId });
+
     let teamMember = await TeamMember.findOne({ userId }).populate("sponsorId");
 
     if (!teamMember) {
       const referralCode = generateReferralCode(userId);
+      teamLogger.debug("Creating new team member", { userId, referralCode });
+
       teamMember = new TeamMember({
         userId,
         referralCode,
       });
       await teamMember.save();
+      teamLogger.success("New team member created", { userId, referralCode });
+    } else {
+      teamLogger.debug("Team member found", { userId });
     }
 
     return {
@@ -34,6 +44,7 @@ export const getOrCreateTeamMember = async (userId) => {
       teamMember,
     };
   } catch (error) {
+    teamLogger.error("Error getting or creating team member", error);
     return {
       success: false,
       message: error.message,
@@ -44,9 +55,12 @@ export const getOrCreateTeamMember = async (userId) => {
 // Set Sponsor/Upline
 export const setSponsor = async (userId, sponsorId) => {
   try {
+    teamLogger.start("Setting sponsor for team member", { userId, sponsorId });
+
     const teamMember = await TeamMember.findOne({ userId });
 
     if (!teamMember) {
+      teamLogger.warn("Team member not found for sponsor assignment", { userId });
       return {
         success: false,
         message: "Team member not found",
@@ -54,6 +68,7 @@ export const setSponsor = async (userId, sponsorId) => {
     }
 
     if (teamMember.sponsorId) {
+      teamLogger.warn("Sponsor already assigned to team member", { userId });
       return {
         success: false,
         message: "Sponsor already assigned",
@@ -62,6 +77,7 @@ export const setSponsor = async (userId, sponsorId) => {
 
     const sponsor = await TeamMember.findOne({ userId: sponsorId });
     if (!sponsor) {
+      teamLogger.warn("Sponsor not found", { sponsorId });
       return {
         success: false,
         message: "Sponsor not found",
@@ -75,6 +91,8 @@ export const setSponsor = async (userId, sponsorId) => {
     sponsor.teamMembers.push(userId);
     sponsor.directCount = sponsor.teamMembers.length;
     await sponsor.save();
+
+    teamLogger.success("Sponsor assigned successfully", { userId, sponsorId, directCount: sponsor.directCount });
 
     return {
       success: true,
