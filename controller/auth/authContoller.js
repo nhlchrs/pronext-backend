@@ -588,3 +588,76 @@ export const getDashboardVisualizations = async (req, res) => {
     });
   }
 };
+
+/**
+ * Suspend/Unsuspend User Account
+ * PUT /api/users/:userId/suspend-status
+ * Admin only endpoint
+ */
+export const updateUserSuspensionStatus = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { isSuspended, suspensionReason } = req.body;
+
+    authLogger.start("Updating user suspension status", { userId, isSuspended });
+
+    if (!userId) {
+      authLogger.warn("Missing userId in request");
+      return ErrorResponse(res, "User ID is required", 400);
+    }
+
+    const user = await userModel.findById(userId);
+    if (!user) {
+      authLogger.error(`User not found: ${userId}`);
+      return notFoundResponse(res, "User not found");
+    }
+
+    if (isSuspended === true) {
+      // Suspending user
+      if (!suspensionReason || !suspensionReason.trim()) {
+        authLogger.warn("Missing suspension reason");
+        return ErrorResponse(res, "Suspension reason is required", 400);
+      }
+      user.isSuspended = true;
+      user.suspensionReason = suspensionReason;
+      user.suspendedAt = new Date();
+      user.suspendedBy = req.user._id;
+      authLogger.security(`User ${user.email} suspended by admin. Reason: ${suspensionReason}`);
+    } else if (isSuspended === false) {
+      // Unsuspending user
+      user.isSuspended = false;
+      user.suspensionReason = null;
+      user.reactivatedAt = new Date();
+      user.reactivatedBy = req.user._id;
+      authLogger.security(`User ${user.email} reactivated by admin`);
+    } else {
+      authLogger.warn("Invalid isSuspended value");
+      return ErrorResponse(res, "isSuspended must be true or false", 400);
+    }
+
+    await user.save();
+
+    authLogger.success(`User suspension status updated: ${user.email}`, {
+      userId: user._id,
+      isSuspended: user.isSuspended,
+    });
+
+    return successResponseWithData(
+      res,
+      isSuspended ? "User suspended successfully" : "User reactivated successfully",
+      {
+        user: {
+          id: user._id,
+          email: user.email,
+          fname: user.fname,
+          lname: user.lname,
+          isSuspended: user.isSuspended,
+          suspensionReason: user.suspensionReason,
+        },
+      }
+    );
+  } catch (error) {
+    authLogger.error("Error updating user suspension status", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
