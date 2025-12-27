@@ -11,6 +11,7 @@ import analyticsRoute from "./controller/analytics/analytics.js";
 import announcement from "./controller/announcement/announcement.js";
 import file from "./controller/files/files.js";
 import paymentRoute from "./controller/payment/payment.js";
+import kycRoute from "./controller/kyc/kyc.js";
 import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
@@ -67,6 +68,7 @@ app.use("/api/admin/analytics", analyticsRoute);
 app.use("/api", announcement);
 app.use("/api/upload", file);
 app.use("/api/payments", paymentRoute);
+app.use("/api", kycRoute);
 
 // Socket.io setup
 io.on("connection", (socket) => {
