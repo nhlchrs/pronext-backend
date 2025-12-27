@@ -624,12 +624,16 @@ export const updateUserSuspensionStatus = async (req, res) => {
       user.suspendedBy = req.user._id;
       authLogger.security(`User ${user.email} suspended by admin. Reason: ${suspensionReason}`);
     } else if (isSuspended === false) {
-      // Unsuspending user
+      // Unsuspending user - reset login count to allow fresh attempts
       user.isSuspended = false;
       user.suspensionReason = null;
+      user.suspendedAt = null;
+      user.suspendedBy = null;
       user.reactivatedAt = new Date();
       user.reactivatedBy = req.user._id;
-      authLogger.security(`User ${user.email} reactivated by admin`);
+      user.dailyLoginCount = 0;  // Reset login count to 0
+      user.lastLoginDate = null;  // Reset last login date
+      authLogger.security(`User ${user.email} reactivated by admin with login count reset`);
     } else {
       authLogger.warn("Invalid isSuspended value");
       return ErrorResponse(res, "isSuspended must be true or false", 400);

@@ -179,6 +179,19 @@ class EventBus extends EventEmitter {
   emitAdminAction(action, adminId, targetId, details) {
     this.emit("admin.action", { action, adminId, targetId, details });
   }
+
+  // Announcement Events
+  emitAnnouncementCreated(announcementData) {
+    this.emit("announcement.created", { announcementData });
+  }
+
+  emitAnnouncementUpdated(announcementId, updatedData) {
+    this.emit("announcement.updated", { announcementId, updatedData });
+  }
+
+  emitAnnouncementDeleted(announcementId) {
+    this.emit("announcement.deleted", { announcementId });
+  }
 }
 
 // Create and export singleton instance

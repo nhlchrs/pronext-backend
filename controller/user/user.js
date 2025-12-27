@@ -12,6 +12,7 @@ import {
   updateUserRole,
   getUserStatistics,
   deleteUserAccount,
+  resetDailyLoginCounts,
 } from "./userController.js";
 
 const router = express.Router();
@@ -36,5 +37,6 @@ router.get("/admin/users", requireSignin, isAdmin, getAllUsers);
 router.get("/admin/user/:userId", requireSignin, isAdmin, getUserById);
 router.put("/admin/user/:userId/role", requireSignin, isAdmin, updateUserRole);
 router.get("/admin/user-stats", requireSignin, isAdmin, getUserStatistics);
+router.post("/admin/reset-login-counts", requireSignin, isAdmin, resetDailyLoginCounts);
 
 export default router;

@@ -7,6 +7,7 @@ import {
   notFoundResponse,
 } from "../../helpers/apiResponse.js";
 import logger from "../../helpers/logger.js";
+import eventBus from "../../services/eventBus.js";
 
 const announcementLogger = logger.module("ANNOUNCEMENT_CONTROLLER");
 export const createAnnouncement = async (req, res) => {
@@ -68,6 +69,12 @@ export const createAnnouncement = async (req, res) => {
     });
 
     announcementLogger.success("Announcement created successfully", { announcementId: announcement._id, type });
+    
+    // Emit socket event for real-time update
+    console.log("🚀 Emitting announcement.created event to eventBus");
+    eventBus.emitAnnouncementCreated(announcement);
+    console.log("✅ Event emitted successfully");
+    
     return successResponseWithData(
       res,
       "Announcement created successfully",
@@ -196,6 +203,8 @@ export const updateAnnouncement = async (req, res) => {
     const { id } = req.params;
     const { title, description, type, flag, image, startDate, endDate, targetUsers, isActive } = req.body;
 
+    announcementLogger.start("Updating announcement", { id });
+
     const announcement = await Announcement.findById(id);
 
     if (!announcement) {
@@ -219,6 +228,11 @@ export const updateAnnouncement = async (req, res) => {
 
     await announcement.save();
 
+    announcementLogger.success("Announcement updated successfully", { announcementId: id });
+    
+    // Emit socket event for real-time update
+    eventBus.emitAnnouncementUpdated(id, announcement);
+
     return successResponseWithData(
       res,
       "Announcement updated successfully",
@@ -239,11 +253,18 @@ export const deleteAnnouncement = async (req, res) => {
   try {
     const { id } = req.params;
 
+    announcementLogger.start("Deleting announcement", { id });
+
     const announcement = await Announcement.findByIdAndDelete(id);
 
     if (!announcement) {
       return notFoundResponse(res, "Announcement not found");
     }
+
+    announcementLogger.success("Announcement deleted successfully", { announcementId: id });
+    
+    // Emit socket event for real-time update
+    eventBus.emitAnnouncementDeleted(id);
 
     return successResponse(res, "Announcement deleted successfully");
   } catch (error) {

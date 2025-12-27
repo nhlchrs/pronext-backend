@@ -204,6 +204,45 @@ export const suspendUserAccount = async (req, res) => {
  * Admin can reactivate a suspended user's account
  * POST /api/admin/user/:userId/reactivate
  */
+// Reset all users' daily login counts (scheduled job)
+export const resetDailyLoginCounts = async (req, res) => {
+  try {
+    const today = new Date().toDateString();
+    
+    // Find all users whose last login date is not today
+    const result = await userModel.updateMany(
+      {
+        $or: [
+          { lastLoginDate: { $lt: new Date(today) } },
+          { lastLoginDate: null }
+        ],
+        dailyLoginCount: { $gt: 0 }
+      },
+      {
+        $set: { dailyLoginCount: 0 }
+      }
+    );
+
+    userLogger.info(`Daily login counts reset for ${result.modifiedCount} users`);
+
+    if (res) {
+      return successResponseWithData(
+        res,
+        "Daily login counts reset successfully",
+        { usersReset: result.modifiedCount }
+      );
+    }
+    
+    return { success: true, usersReset: result.modifiedCount };
+  } catch (error) {
+    userLogger.error("Error resetting daily login counts", error);
+    if (res) {
+      return ErrorResponse(res, error.message, 500);
+    }
+    return { success: false, error: error.message };
+  }
+};
+
 export const reactivateUserAccount = async (req, res) => {
   try {
     const { userId } = req.params;
@@ -218,15 +257,21 @@ export const reactivateUserAccount = async (req, res) => {
       return ErrorResponse(res, "User is not suspended", 400);
     }
 
-    // Reactivate user
+    // Reactivate user and reset login count
     user.isSuspended = false;
     user.suspensionReason = null;
     user.suspendedAt = null;
     user.suspendedBy = null;
     user.reactivatedAt = new Date();
     user.reactivatedBy = req.user._id;
+    user.dailyLoginCount = 0;  // Reset to 0 to allow fresh login attempts
+    user.lastLoginDate = null;  // Reset last login date
 
     await user.save();
+
+    // Verify the save
+    const updatedUser = await userModel.findById(userId);
+    userLogger.info(`User ${user.email} reactivated - Login count: ${updatedUser.dailyLoginCount}`);
 
     return successResponseWithData(
       res,

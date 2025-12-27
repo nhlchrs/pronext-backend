@@ -187,16 +187,22 @@ export const setupRealtimeEvents = (io) => {
 
   eventBus.on("announcement.created", (data) => {
     const { announcementData } = data;
+    console.log("📢 Broadcasting announcement_created event:", announcementData);
+    // Emit directly to all connected clients
+    io.emit("announcement_created", { announcementData });
+    // Also use notification service for backwards compatibility
     notificationService.broadcastNotification("announcement_created", announcementData);
   });
 
   eventBus.on("announcement.updated", (data) => {
     const { announcementId, updatedData } = data;
+    console.log("📝 Broadcasting announcement_updated event:", announcementId);
     io.emit("announcement_updated", { announcementId, updatedData });
   });
 
   eventBus.on("announcement.deleted", (data) => {
     const { announcementId } = data;
+    console.log("🗑️ Broadcasting announcement_deleted event:", announcementId);
     io.emit("announcement_deleted", { announcementId });
   });
 
