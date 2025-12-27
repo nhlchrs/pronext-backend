@@ -1,5 +1,5 @@
-import { TeamMember, Referral, Bonus, Commission } from "../models/teamModel.js";
-import User from "../models/authModel.js";
+import { TeamMember, Referral, Bonus, Commission } from "../../models/teamModel.js";
+import User from "../../models/authModel.js";
 import { v4 as uuidv4 } from "uuid";
 import {
   calculateDirectBonus,
@@ -8,12 +8,16 @@ import {
   generateBonusBreakdown,
   getNextMilestone,
   checkLevelIncomQualification,
-} from "../helpers/bonusCalculator.js";
+} from "../../helpers/bonusCalculator.js";
 import logger from "../../helpers/logger.js";
 
 const teamLogger = logger.module("TEAM_CONTROLLER");
 
-// Generate unique referral code
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Generate unique referral code for a user
+ */
 export const generateReferralCode = (userId) => {
   return `PRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
 };
@@ -530,3 +534,956 @@ export const getTeamStatistics = async () => {
     };
   }
 };
+
+// ==================== REFERRAL API FUNCTIONS ====================
+
+// Debug endpoint - check authentication status
+export const debugAuth = async (userId) => {
+  try {
+    const user = await User.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
+    return {
+      success: true,
+      message: "Authentication successful",
+      userInfo: {
+        userId: user._id,
+        userRole: user.role,
+        email: user.email,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Initialize team membership
+export const initMembership = async (userId) => {
+  try {
+    teamLogger.start("Initializing team membership", { userId });
+
+    let teamMember = await TeamMember.findOne({ userId });
+
+    if (teamMember) {
+      return {
+        success: true,
+        message: "User is already a team member",
+        data: teamMember,
+      };
+    }
+
+    const referralCode = generateReferralCode(userId);
+    teamMember = new TeamMember({
+      userId,
+      referralCode,
+      isActive: true,
+    });
+
+    const commission = new Commission({ userId });
+    await Promise.all([teamMember.save(), commission.save()]);
+
+    teamLogger.success("Team membership created", { userId, referralCode });
+
+    return {
+      success: true,
+      message: "Team membership created successfully",
+      data: teamMember,
+    };
+  } catch (error) {
+    teamLogger.error("Error initializing team membership", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Check team member status
+export const checkMemberStatus = async (userId) => {
+  try {
+    const teamMember = await TeamMember.findOne({ userId });
+
+    if (!teamMember) {
+      return {
+        success: true,
+        isTeamMember: false,
+        message: "User is not yet a team member",
+      };
+    }
+
+    return {
+      success: true,
+      isTeamMember: true,
+      data: {
+        referralCode: teamMember.referralCode,
+        level: teamMember.level,
+        directCount: teamMember.directCount,
+        totalDownline: teamMember.totalDownline,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error checking team status", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get all team members with statistics
+export const getAllTeamMembers = async () => {
+  try {
+    teamLogger.start("Fetching all team members");
+
+    const members = await TeamMember.find()
+      .populate("userId", "fname lname email phone createdAt")
+      .populate("sponsorId", "fname lname")
+      .sort({ directCount: -1 });
+
+    const stats = await TeamMember.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalMembers: { $sum: 1 },
+          totalEarnings: { $sum: "$totalEarnings" },
+          averageDirects: { $avg: "$directCount" },
+          maxDirects: { $max: "$directCount" },
+        },
+      },
+    ]);
+
+    const levelBreakdown = await TeamMember.aggregate([
+      {
+        $group: {
+          _id: "$level",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    return {
+      success: true,
+      data: {
+        members,
+        totalMembers: stats[0]?.totalMembers || 0,
+        totalEarnings: stats[0]?.totalEarnings || 0,
+        averageDirects: stats[0]?.averageDirects || 0,
+        levelBreakdown,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error fetching team members", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get team statistics
+export const getAllTeamStatistics = async () => {
+  try {
+    teamLogger.start("Fetching team statistics");
+
+    const stats = await TeamMember.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalMembers: { $sum: 1 },
+          totalEarnings: { $sum: "$totalEarnings" },
+          averageDirects: { $avg: "$directCount" },
+          maxDirects: { $max: "$directCount" },
+          averageEarnings: { $avg: "$totalEarnings" },
+        },
+      },
+    ]);
+
+    const levelBreakdown = await TeamMember.aggregate([
+      {
+        $group: {
+          _id: "$level",
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    const qualifiedMembers = await TeamMember.countDocuments({
+      levelQualified: true,
+    });
+
+    return {
+      success: true,
+      data: {
+        totalMembers: stats[0]?.totalMembers || 0,
+        totalEarnings: stats[0]?.totalEarnings || 0,
+        averageDirects: stats[0]?.averageDirects || 0,
+        maxDirects: stats[0]?.maxDirects || 0,
+        averageEarnings: stats[0]?.averageEarnings || 0,
+        levelBreakdown,
+        qualifiedMembers,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error fetching statistics", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Create team member (admin function)
+export const createTeamMember = async (userId, sponsorId, packagePrice) => {
+  try {
+    teamLogger.start("Creating new team member", { userId });
+
+    if (!userId) {
+      return {
+        success: false,
+        message: "User ID is required",
+      };
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
+
+    const existingMember = await TeamMember.findOne({ userId });
+    if (existingMember) {
+      return {
+        success: false,
+        message: "Team member already exists",
+      };
+    }
+
+    const referralCode = generateReferralCode(userId);
+    const newMember = new TeamMember({
+      userId,
+      referralCode,
+      packagePrice: packagePrice || 0,
+    });
+
+    if (sponsorId) {
+      const sponsor = await TeamMember.findOne({ userId: sponsorId });
+      if (!sponsor) {
+        return {
+          success: false,
+          message: "Sponsor not found",
+        };
+      }
+
+      newMember.sponsorId = sponsor._id;
+      sponsor.teamMembers.push(userId);
+      sponsor.directCount = sponsor.teamMembers.length;
+      await sponsor.save();
+
+      teamLogger.success("Sponsor assigned", { userId, sponsorId });
+    }
+
+    await newMember.save();
+
+    const commission = new Commission({ userId });
+    await commission.save();
+
+    teamLogger.success("Team member created", { userId, referralCode });
+
+    return {
+      success: true,
+      message: "Team member created successfully",
+      data: newMember,
+    };
+  } catch (error) {
+    teamLogger.error("Error creating team member", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Set sponsor for team member
+export const setTeamSponsor = async (userId, sponsorId) => {
+  try {
+    teamLogger.start("Setting sponsor", { userId, sponsorId });
+
+    if (!userId) {
+      return {
+        success: false,
+        message: "User ID is required",
+      };
+    }
+
+    const member = await TeamMember.findOne({ userId });
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // If unsetting sponsor
+    if (!sponsorId) {
+      if (member.sponsorId) {
+        const oldSponsor = await TeamMember.findById(member.sponsorId);
+        if (oldSponsor) {
+          oldSponsor.teamMembers = oldSponsor.teamMembers.filter(
+            (id) => id.toString() !== userId
+          );
+          oldSponsor.directCount = oldSponsor.teamMembers.length;
+          await oldSponsor.save();
+        }
+      }
+      member.sponsorId = null;
+      await member.save();
+      return {
+        success: true,
+        message: "Sponsor removed successfully",
+        data: member,
+      };
+    }
+
+    // Set new sponsor
+    const newSponsor = await TeamMember.findOne({ userId: sponsorId });
+    if (!newSponsor) {
+      return {
+        success: false,
+        message: "Sponsor not found",
+      };
+    }
+
+    // Remove from old sponsor if exists
+    if (member.sponsorId) {
+      const oldSponsor = await TeamMember.findById(member.sponsorId);
+      if (oldSponsor) {
+        oldSponsor.teamMembers = oldSponsor.teamMembers.filter(
+          (id) => id.toString() !== userId
+        );
+        oldSponsor.directCount = oldSponsor.teamMembers.length;
+        await oldSponsor.save();
+      }
+    }
+
+    // Add to new sponsor
+    member.sponsorId = newSponsor._id;
+    newSponsor.teamMembers.push(userId);
+    newSponsor.directCount = newSponsor.teamMembers.length;
+
+    await member.save();
+    await newSponsor.save();
+
+    teamLogger.success("Sponsor updated", { userId, sponsorId });
+
+    return {
+      success: true,
+      message: "Sponsor updated successfully",
+      data: member,
+    };
+  } catch (error) {
+    teamLogger.error("Error setting sponsor", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get team network tree
+export const getTeamNetworkTree = async (userId, depth = 3) => {
+  try {
+    teamLogger.start("Fetching team network", { userId });
+
+    const getNetworkTree = async (userId, depth = 3, currentDepth = 0) => {
+      if (currentDepth >= depth) return null;
+
+      const teamMember = await TeamMember.findOne({ userId }).populate(
+        "teamMembers"
+      );
+
+      if (!teamMember) return null;
+
+      const children = await Promise.all(
+        teamMember.teamMembers.map((memberId) =>
+          getNetworkTree(memberId, depth, currentDepth + 1)
+        )
+      );
+
+      return {
+        userId: teamMember.userId,
+        directCount: teamMember.directCount,
+        level: teamMember.level,
+        totalDownline: teamMember.totalDownline,
+        children: children.filter((child) => child !== null),
+      };
+    };
+
+    const network = await getNetworkTree(userId);
+
+    if (!network) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    teamLogger.success("Network fetched", { userId });
+
+    return {
+      success: true,
+      data: network,
+    };
+  } catch (error) {
+    teamLogger.error("Error fetching network", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Delete team member
+export const deleteTeamMember = async (userId) => {
+  try {
+    teamLogger.start("Deleting team member", { userId });
+
+    const member = await TeamMember.findOne({ userId });
+
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Remove from sponsor's team
+    if (member.sponsorId) {
+      const sponsor = await TeamMember.findById(member.sponsorId);
+      if (sponsor) {
+        sponsor.teamMembers = sponsor.teamMembers.filter(
+          (id) => id.toString() !== userId
+        );
+        sponsor.directCount = sponsor.teamMembers.length;
+        await sponsor.save();
+      }
+    }
+
+    // Reassign downline to sponsor
+    if (member.teamMembers.length > 0 && member.sponsorId) {
+      const sponsor = await TeamMember.findById(member.sponsorId);
+      if (sponsor) {
+        for (const downlineId of member.teamMembers) {
+          const downlineMember = await TeamMember.findOne({ userId: downlineId });
+          if (downlineMember) {
+            downlineMember.sponsorId = sponsor._id;
+            await downlineMember.save();
+            sponsor.teamMembers.push(downlineId);
+          }
+        }
+        sponsor.directCount = sponsor.teamMembers.length;
+        await sponsor.save();
+      }
+    }
+
+    // Delete team member
+    await TeamMember.deleteOne({ userId });
+
+    // Delete related records
+    await Bonus.deleteMany({ userId });
+    await Commission.deleteOne({ userId });
+    await Referral.deleteMany({ referrerId: userId });
+
+    teamLogger.success("Team member deleted", { userId });
+
+    return {
+      success: true,
+      message: "Team member deleted successfully",
+    };
+  } catch (error) {
+    teamLogger.error("Error deleting team member", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Update team member
+export const updateTeamMember = async (userId, packagePrice) => {
+  try {
+    teamLogger.start("Updating team member", { userId });
+
+    const member = await TeamMember.findOne({ userId });
+
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    if (packagePrice !== undefined) {
+      member.packagePrice = packagePrice;
+    }
+
+    await member.save();
+
+    teamLogger.success("Team member updated", { userId });
+
+    return {
+      success: true,
+      message: "Team member updated successfully",
+      data: member,
+    };
+  } catch (error) {
+    teamLogger.error("Error updating team member", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Validate referral code
+export const validateReferralCode = async (code) => {
+  try {
+    teamLogger.start("Validating referral code", { code });
+
+    if (!code) {
+      return {
+        success: false,
+        message: "Referral code is required",
+      };
+    }
+
+    const teamMember = await TeamMember.findOne({ referralCode: code }).populate(
+      "userId",
+      "fname lname email"
+    );
+
+    if (!teamMember) {
+      return {
+        success: false,
+        message: "Invalid referral code",
+      };
+    }
+
+    if (!teamMember.isActive) {
+      return {
+        success: false,
+        message: "Referrer is not active",
+      };
+    }
+
+    teamLogger.success("Referral code validated", { code, referrerId: teamMember.userId });
+
+    return {
+      success: true,
+      message: "Referral code is valid",
+      data: {
+        referralCode: code,
+        referrerId: teamMember.userId._id,
+        referrerName: `${teamMember.userId.fname} ${teamMember.userId.lname}`,
+        referrerLevel: teamMember.level,
+        directCount: teamMember.directCount,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error validating referral code", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Apply referral code
+export const applyReferralCode = async (userId, code) => {
+  try {
+    teamLogger.start("Applying referral code", { code, userId });
+
+    if (!code) {
+      return {
+        success: false,
+        message: "Referral code is required",
+      };
+    }
+
+    const existingMember = await TeamMember.findOne({ userId });
+    if (existingMember) {
+      return {
+        success: false,
+        message: "User is already part of a team",
+      };
+    }
+
+    const referrerMember = await TeamMember.findOne({ referralCode: code });
+
+    if (!referrerMember) {
+      return {
+        success: false,
+        message: "Invalid referral code",
+      };
+    }
+
+    if (!referrerMember.isActive) {
+      return {
+        success: false,
+        message: "Referrer is not active",
+      };
+    }
+
+    const newReferralCode = generateReferralCode(userId);
+    const newMember = new TeamMember({
+      userId,
+      sponsorId: referrerMember._id,
+      referralCode: newReferralCode,
+      isActive: true,
+    });
+
+    referrerMember.teamMembers.push(userId);
+    referrerMember.directCount = referrerMember.teamMembers.length;
+
+    const referral = new Referral({
+      referrerId: referrerMember.userId,
+      referredUserId: userId,
+      referralCode: code,
+      status: "approved",
+      approvalDate: new Date(),
+    });
+
+    const commission = new Commission({ userId });
+
+    await Promise.all([
+      newMember.save(),
+      referrerMember.save(),
+      referral.save(),
+      commission.save(),
+    ]);
+
+    // Update referrer's level if needed
+    if (referrerMember.directCount >= 10 && !referrerMember.levelQualified) {
+      referrerMember.levelQualified = true;
+      referrerMember.levelQualifiedDate = new Date();
+      referrerMember.level = 1;
+      await referrerMember.save();
+    }
+
+    teamLogger.success("Referral code applied successfully", {
+      code,
+      userId,
+      sponsorId: referrerMember.userId,
+    });
+
+    return {
+      success: true,
+      message: "Successfully joined team using referral code",
+      data: {
+        teamMember: newMember,
+        referrerInfo: {
+          id: referrerMember.userId,
+          level: referrerMember.level,
+          directCount: referrerMember.directCount,
+        },
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error applying referral code", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get referral code info for user
+export const getMyReferralCode = async (userId) => {
+  try {
+    teamLogger.start("Getting user referral code", { userId });
+
+    const teamMember = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email")
+      .populate("sponsorId", "fname lname");
+
+    if (!teamMember) {
+      return {
+        success: false,
+        message: "Team member not found. Please create team membership first.",
+      };
+    }
+
+    teamLogger.success("Referral code retrieved", { userId, code: teamMember.referralCode });
+
+    return {
+      success: true,
+      data: {
+        referralCode: teamMember.referralCode,
+        referralLink: `${process.env.FRONTEND_URL || "http://localhost:3000"}/join?ref=${teamMember.referralCode}`,
+        userInfo: {
+          name: `${teamMember.userId.fname} ${teamMember.userId.lname}`,
+          email: teamMember.userId.email,
+        },
+        stats: {
+          directCount: teamMember.directCount,
+          totalDownline: teamMember.totalDownline,
+          level: teamMember.level,
+          totalEarnings: teamMember.totalEarnings,
+        },
+        sponsor: teamMember.sponsorId
+          ? {
+              name: `${teamMember.sponsorId.fname} ${teamMember.sponsorId.lname}`,
+            }
+          : null,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting referral code", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get all referrals for user
+export const getMyReferrals = async (userId, page = 1, limit = 10) => {
+  try {
+    const skip = (page - 1) * limit;
+
+    teamLogger.start("Getting user referrals", { userId, page, limit });
+
+    const total = await Referral.countDocuments({ referrerId: userId });
+    const referrals = await Referral.find({ referrerId: userId })
+      .populate("referredUserId", "fname lname email phone createdAt")
+      .sort({ referralDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    return {
+      success: true,
+      data: {
+        referrals,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting referrals", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get downline structure for current user
+export const getMyDownlineStructure = async (userId, depth = 5) => {
+  try {
+    teamLogger.start("Getting downline structure for current user", { userId, depth });
+
+    const currentMember = await TeamMember.findOne({ userId }).populate(
+      "userId",
+      "fname lname email"
+    );
+
+    if (!currentMember) {
+      return {
+        success: false,
+        message: "Team member not found. Please create team membership first.",
+      };
+    }
+
+    const buildHierarchy = async (userId, currentDepth = 0) => {
+      if (currentDepth >= depth) return null;
+
+      const member = await TeamMember.findOne({ userId })
+        .populate("userId", "fname lname email")
+        .populate("teamMembers");
+
+      if (!member) return null;
+
+      const teamMembersArray = [];
+      for (const memberId of member.teamMembers) {
+        const child = await buildHierarchy(memberId, currentDepth + 1);
+        if (child) {
+          teamMembersArray.push(child);
+        }
+      }
+
+      return {
+        _id: member._id,
+        userId: member.userId,
+        directCount: member.directCount,
+        level: member.level,
+        totalEarnings: member.totalEarnings,
+        totalDownline: member.totalDownline || 0,
+        teamMembers: teamMembersArray,
+      };
+    };
+
+    const hierarchy = await buildHierarchy(userId);
+
+    teamLogger.success("Downline structure retrieved for current user", { userId });
+
+    return {
+      success: true,
+      data: hierarchy,
+    };
+  } catch (error) {
+    teamLogger.error("Error getting downline structure for current user", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get downline structure for any user
+export const getDownlineStructure = async (userId, depth = 5) => {
+  try {
+    teamLogger.start("Getting downline structure", { userId, depth });
+
+    const buildHierarchy = async (userId, currentDepth = 0) => {
+      if (currentDepth >= depth) return null;
+
+      const member = await TeamMember.findOne({ userId })
+        .populate("userId", "fname lname email")
+        .populate("teamMembers");
+
+      if (!member) return null;
+
+      const children = await Promise.all(
+        member.teamMembers.map((memberId) => buildHierarchy(memberId, currentDepth + 1))
+      );
+
+      return {
+        _id: member._id,
+        userId: member.userId,
+        directCount: member.directCount,
+        level: member.level,
+        totalEarnings: member.totalEarnings,
+        children: children.filter((child) => child !== null),
+      };
+    };
+
+    const hierarchy = await buildHierarchy(userId);
+
+    if (!hierarchy) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    teamLogger.success("Downline structure retrieved", { userId });
+
+    return {
+      success: true,
+      data: {
+        hierarchy,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting downline structure", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get referral statistics for a specific user
+export const getReferralStats = async (userId) => {
+  try {
+    teamLogger.start("Getting referral stats", { userId });
+
+    const member = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email")
+      .populate("teamMembers");
+
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Count total team size recursively
+    const countTeamSize = async (memberId, visited = new Set()) => {
+      if (visited.has(memberId.toString())) return 0;
+      visited.add(memberId.toString());
+
+      const currentMember = await TeamMember.findById(memberId);
+      if (!currentMember || !currentMember.teamMembers) return 0;
+
+      let count = currentMember.teamMembers.length;
+      for (const childId of currentMember.teamMembers) {
+        count += await countTeamSize(childId, visited);
+      }
+      return count;
+    };
+
+    // Calculate max depth
+    const calculateMaxDepth = async (memberId, currentDepth = 0) => {
+      const currentMember = await TeamMember.findById(memberId);
+      if (!currentMember || !currentMember.teamMembers || currentMember.teamMembers.length === 0) {
+        return currentDepth;
+      }
+
+      const childDepths = await Promise.all(
+        currentMember.teamMembers.map((childId) => calculateMaxDepth(childId, currentDepth + 1))
+      );
+
+      return Math.max(...childDepths);
+    };
+
+    const totalTeam = await countTeamSize(member._id);
+    const maxDepth = await calculateMaxDepth(member._id);
+    const directReferrals = member.directCount || 0;
+
+    // Count active members (members with at least 1 referral)
+    const activeMembers = await TeamMember.countDocuments({
+      _id: { $in: [member._id, ...member.teamMembers] },
+      directCount: { $gt: 0 },
+    });
+
+    const stats = {
+      totalTeam,
+      directReferrals,
+      maxDepth,
+      activeMembers,
+      totalEarnings: member.totalEarnings || 0,
+      currentLevel: member.level || 0,
+      referralCode: member.referralCode,
+    };
+
+    teamLogger.success("Referral stats retrieved", stats);
+
+    return {
+      success: true,
+      ...stats,
+    };
+  } catch (error) {
+    teamLogger.error("Error getting referral stats", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+

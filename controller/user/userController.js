@@ -333,6 +333,7 @@ export const getAllUsers = async (req, res) => {
 
     return successResponseWithData(
       res,
+      "Users retrieved successfully",
       {
         users,
         pagination: {
@@ -341,8 +342,7 @@ export const getAllUsers = async (req, res) => {
           limit: parseInt(limit),
           pages: Math.ceil(total / limit),
         },
-      },
-      "Users retrieved successfully"
+      }
     );
   } catch (error) {
     userLogger.error("Error fetching users", error);

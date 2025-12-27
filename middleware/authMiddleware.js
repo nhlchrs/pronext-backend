@@ -8,6 +8,8 @@ import bcrypt from 'bcrypt';
 export const authMiddleware = async (req, res, next) => {
   try {
     const token = req.headers.authorization;
+    console.log(`[AUTH DEBUG] Route: ${req.method} ${req.path}`);
+    console.log(`[AUTH DEBUG] Token present: ${!!token}`);
 
     if (!token) {
       return res.status(401).json({
@@ -20,9 +22,11 @@ export const authMiddleware = async (req, res, next) => {
     const tokenWithoutBearer = token.startsWith('Bearer ') ? token.slice(7) : token;
 
     const decoded = jwt.verify(tokenWithoutBearer, process.env.JWT_SECRET);
+    console.log(`[AUTH DEBUG] Decoded user role: ${decoded.role}`);
     req.user = decoded;
     next();
   } catch (err) {
+    console.log(`[AUTH DEBUG] Auth error: ${err.message}`);
     return res.status(401).json({
       success: false,
       message: "Unauthorized Access. Invalid or expired token."
@@ -82,14 +86,21 @@ export const comparePassword = async (password, hashedPassword) => {
  */
 export const isAdmin = (req, res, next) => {
   try {
+    console.log(`[ADMIN CHECK] Route: ${req.method} ${req.path}`);
+    console.log(`[ADMIN CHECK] User exists: ${!!req.user}`);
+    console.log(`[ADMIN CHECK] User role: ${req.user?.role}`);
+    
     if (!req.user || req.user.role !== "Admin") {
+      console.log(`[ADMIN CHECK] Access denied - Admin role required`);
       return res.status(403).json({
         success: false,
         message: "Admin access required"
       });
     }
+    console.log(`[ADMIN CHECK] Access granted`);
     next();
   } catch (error) {
+    console.log(`[ADMIN CHECK] Error: ${error.message}`);
     return res.status(403).json({
       success: false,
       message: "Access denied"

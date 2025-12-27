@@ -12,6 +12,8 @@ import announcement from "./controller/announcement/announcement.js";
 import file from "./controller/files/files.js";
 import paymentRoute from "./controller/payment/payment.js";
 import kycRoute from "./controller/kyc/kyc.js";
+import adminTeamRoute from "./controller/team/adminTeam.js";
+import teamRoute from "./controller/team/team.js";
 import cors from "cors";
 import morgan from "morgan";
 import helmet from "helmet";
@@ -69,6 +71,8 @@ app.use("/api", announcement);
 app.use("/api/upload", file);
 app.use("/api/payments", paymentRoute);
 app.use("/api", kycRoute);
+app.use("/api", adminTeamRoute);
+app.use("/api", teamRoute);
 
 // Socket.io setup
 io.on("connection", (socket) => {
