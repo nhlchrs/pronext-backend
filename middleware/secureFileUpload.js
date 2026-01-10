@@ -4,7 +4,7 @@ import fs from "fs";
 import crypto from "crypto";
 
 // Create necessary directories
-const uploadsDir = "uploads";
+const uploadsDir = process.env.VERCEL ? "/tmp/uploads" : "uploads";
 const videosDir = path.join(uploadsDir, "videos");
 const pdfsDir = path.join(uploadsDir, "pdfs");
 const encryptedDir = path.join(uploadsDir, "encrypted");

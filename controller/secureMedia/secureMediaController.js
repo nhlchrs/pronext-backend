@@ -29,8 +29,9 @@ export const uploadSecureMedia = async (req, res) => {
       return ErrorResponse(res, "File is required", 400);
     }
 
+    const uploadsDir = process.env.VERCEL ? "/tmp/uploads" : "uploads";
     const originalPath = req.file.path;
-    const encryptedDir = path.join("uploads", "encrypted");
+    const encryptedDir = path.join(uploadsDir, "encrypted");
     const encryptedFileName = `${path.parse(req.file.filename).name}.enc`;
     const encryptedPath = path.join(encryptedDir, encryptedFileName);
 

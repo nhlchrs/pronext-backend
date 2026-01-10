@@ -457,12 +457,13 @@ export const generateExcelReport = async (req, res) => {
       ]);
     }
 
+    const uploadsDir = process.env.VERCEL ? "/tmp/uploads" : "uploads";
     const filename = `analytics_report_${new Date().getTime()}.xlsx`;
-    const filepath = path.join("uploads", filename);
+    const filepath = path.join(uploadsDir, filename);
 
     // Ensure uploads directory exists
-    if (!fs.existsSync("uploads")) {
-      fs.mkdirSync("uploads", { recursive: true });
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
     await workbook.xlsx.writeFile(filepath);
