@@ -38,6 +38,10 @@ router.delete(
 // User routes - View and stream (subscription required)
 router.get(
   "/secure-media",
+  (req, res, next) => {
+    console.log(`[SECURE MEDIA ROUTE] GET /secure-media route hit! Middleware chain: [requireSignin ONLY]`);
+    next();
+  },
   requireSignin,
   getAllSecureMedia
 );

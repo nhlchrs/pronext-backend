@@ -88,9 +88,13 @@ export const uploadSecureMedia = async (req, res) => {
  */
 export const getAllSecureMedia = async (req, res) => {
   try {
+    console.log("[SECURE MEDIA] getAllSecureMedia called");
+    console.log("[SECURE MEDIA] User:", req.user);
+    console.log("[SECURE MEDIA] User role:", req.user?.role);
+    
     const { type, category, page = 1, limit = 20, isActive } = req.query;
 
-    mediaLogger.start("Fetching secure media", { type, category, page, limit });
+    mediaLogger.start("Fetching secure media", { type, category, page, limit, userRole: req.user?.role });
 
     const filter = {};
     if (type) filter.type = type;

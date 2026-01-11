@@ -565,6 +565,10 @@ export const deleteUserAccount = async (req, res) => {
  */
 export const uploadProfilePicture = async (req, res) => {
   try {
+    console.log("[UPLOAD PROFILE] User from token:", req.user);
+    console.log("[UPLOAD PROFILE] User role:", req.user?.role);
+    console.log("[UPLOAD PROFILE] User ID:", req.user?._id);
+    
     const userId = req.user._id;
 
     if (!req.file) {

@@ -657,23 +657,41 @@ export const getPaymentStatistics = async (req, res) => {
  */
 export const createSubscriptionPayment = async (req, res) => {
   try {
-    const { subscriptionTier = "Premium", pay_currency = "USDT" } = req.body;
+    const { planType, amount, currency = "usd", pay_currency = "btc" } = req.body;
+    let payCurrency = pay_currency;
+    
+    // Map plan types to amounts if not provided
+    const planPrices = {
+      "monthly": 29.99,
+      "quarterly": 79.99,
+      "yearly": 299.99,
+      "Basic": 5,
+      "Premium": 15,
+      "Pro": 30,
+    };
+    
+    const planDescription = {
+      "monthly": "Monthly Subscription - 30 Days",
+      "quarterly": "Quarterly Subscription - 90 Days",
+      "yearly": "Yearly Subscription - 365 Days",
+      "Basic": "Basic Subscription - 30 Days",
+      "Premium": "Premium Subscription - 30 Days",
+      "Pro": "Pro Subscription - 30 Days",
+    };
+    
+    const finalAmount = amount || planPrices[planType] || 15;
+    const finalDescription = planDescription[planType] || "Subscription Payment";
     
     paymentLogger.start("Creating subscription payment", {
-      tier: subscriptionTier,
-      payCurrency: pay_currency,
+      plan: planType,
+      amount: finalAmount,
+      payCurrency: payCurrency,
     });
 
-    // Validate subscription tier
-    const validTiers = {
-      Basic: { amount: 5, description: "Basic Subscription - 30 Days" },
-      Premium: { amount: 15, description: "Premium Subscription - 30 Days" },
-      Pro: { amount: 30, description: "Pro Subscription - 30 Days" },
-    };
-
-    if (!validTiers[subscriptionTier]) {
-      paymentLogger.warn("Invalid subscription tier", { tier: subscriptionTier });
-      return ErrorResponse(res, "Invalid subscription tier. Must be Basic, Premium, or Pro");
+    // Validate subscription plan
+    if (!planPrices[planType]) {
+      paymentLogger.warn("Invalid plan type", { plan: planType });
+      return ErrorResponse(res, "Invalid subscription plan");
     }
 
     const userId = req.user?._id;
@@ -684,62 +702,96 @@ export const createSubscriptionPayment = async (req, res) => {
       return ErrorResponse(res, "User must be authenticated to purchase subscription", 401);
     }
 
-    const tierData = validTiers[subscriptionTier];
-    const order_id = `subscription_${userId}_${subscriptionTier}_${Date.now()}`;
+    const order_id = `subscription_${userId}_${planType}_${Date.now()}`;
+
+    // Normalize currency to lowercase
+    payCurrency = payCurrency.toLowerCase();
+    
+    // List of currencies that have been reported as unavailable
+    const unavailableCurrencies = ["usdt", "usdt_trc20", "usdt_erc20"];
+    
+    // Fallback currency mapping
+    const currencyFallback = {
+      "usdt": "btc",
+      "usdt_trc20": "eth",
+      "usdt_erc20": "eth",
+    };
+    
+    // Check if currency is unavailable and use fallback
+    if (unavailableCurrencies.includes(payCurrency)) {
+      paymentLogger.warn("Currency unavailable, using fallback", {
+        requested: payCurrency,
+        fallback: currencyFallback[payCurrency] || "btc"
+      });
+      payCurrency = currencyFallback[payCurrency] || "btc";
+    }
 
     const paymentData = {
-      price_amount: tierData.amount,
-      price_currency: "USD",
-      pay_currency: pay_currency,
+      price_amount: finalAmount,
+      price_currency: currency.toUpperCase(),
+      pay_currency: payCurrency.toUpperCase(),
       order_id: order_id,
-      order_description: tierData.description,
+      order_description: finalDescription,
       ipn_callback_url: `${process.env.BASE_URL || "http://localhost:5000"}/api/payments/webhook`,
       customer_email: userEmail,
     };
 
-    // Create invoice on NOWPayments
-    const invoice = await nowpaymentsService.createPaymentInvoice(paymentData);
+    // Create invoice on NOWPayments with fallback handling
+    let invoice;
+    try {
+      invoice = await nowpaymentsService.createPaymentInvoice(paymentData);
+    } catch (apiError) {
+      // If payment creation fails with currency error, try with BTC fallback
+      if (payCurrency !== "BTC") {
+        paymentLogger.warn("Payment creation failed, trying with BTC fallback", { error: apiError.response?.data });
+        paymentData.pay_currency = "BTC";
+        invoice = await nowpaymentsService.createPaymentInvoice(paymentData);
+      } else {
+        throw apiError;
+      }
+    }
 
     // Save subscription payment record
     const paymentRecord = await new paymentModel({
-      userId,
-      invoiceId: invoice.id,
-      orderId: order_id,
-      amount: tierData.amount,
-      currency: "USD",
-      payCurrency: pay_currency,
-      description: tierData.description,
+      user: userId,
+      type: "subscription",
+      amount: finalAmount,
       status: "pending",
-      provider: "nowpayments",
-      invoiceUrl: invoice.invoice_url,
-      subscriptionType: subscriptionTier,
+      transactionId: invoice.id,
       metadata: {
-        createdAt: new Date(),
+        invoiceId: invoice.id,
+        orderId: order_id,
+        currency: "USD",
+        payCurrency: payCurrency,
+        description: finalDescription,
+        provider: "nowpayments",
+        invoiceUrl: invoice.invoice_url,
+        subscriptionPlan: planType,
         invoiceData: invoice,
-        subscriptionTier: subscriptionTier,
       },
     }).save();
 
     paymentLogger.success("Subscription payment invoice created", {
       userId,
-      tier: subscriptionTier,
+      plan: planType,
       invoiceId: invoice.id,
     });
 
     return successResponseWithData(
       res,
+      "Invoice created successfully - opening payment page",
       {
         invoiceId: invoice.id,
         orderId: order_id,
+        invoiceUrl: invoice.invoice_url,
         paymentUrl: invoice.invoice_url,
-        subscriptionTier: subscriptionTier,
-        amount: tierData.amount,
-        currency: "USD",
-        payCurrency: pay_currency,
+        subscriptionPlan: planType,
+        subscriptionType: planType,
+        amount: finalAmount,
+        currency: currency.toUpperCase(),
+        payCurrency: payCurrency.toUpperCase(),
         walletAddress: invoice.pay_address || null,
-        message: "Please complete payment to activate subscription",
-      },
-      "Subscription payment invoice created successfully"
+      }
     );
   } catch (error) {
     paymentLogger.error("Error creating subscription payment", error);
