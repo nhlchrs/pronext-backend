@@ -47,12 +47,25 @@ const getAllowedOrigins = () => {
     origins.push(process.env.FRONTEND_ADMIN_URL);
   }
   
-  return origins.filter(Boolean);
+  const allowedOrigins = origins.filter(Boolean);
+  console.log('🔐 Allowed CORS Origins:', allowedOrigins);
+  return allowedOrigins;
 };
 
 const io = new Server(httpServer, {
   cors: {
-    origin: getAllowedOrigins(),
+    origin: (origin, callback) => {
+      const allowedOrigins = getAllowedOrigins();
+      // Allow requests with no origin (mobile apps, Postman, etc.)
+      if (!origin) return callback(null, true);
+      
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.warn('⚠️ Socket.io blocked origin:', origin);
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ["GET", "POST"],
     credentials: true,
   },
