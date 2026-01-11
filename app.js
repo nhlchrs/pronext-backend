@@ -82,8 +82,11 @@ const io = new Server(httpServer, {
 // Initialize real-time events
 setupRealtimeEvents(io);
 
-// Security middleware
-app.use(helmet());
+// Security middleware - Configure helmet to allow cross-origin resources
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+}));
 
 // Rate limiting
 const limiter = rateLimit({
@@ -109,8 +112,16 @@ app.use(morgan("combined", { stream: { write: (msg) => console.log(msg) } }));
 app.use(requestLogger);
 app.use(performanceMonitor);
 
-// Apply rate limiting
+// Apply rate limiting to API routes
 app.use("/api/", limiter);
+
+// Serve static files from uploads directory with CORS headers
+app.use("/uploads", cors({
+  origin: getAllowedOrigins(),
+  credentials: true,
+  methods: ["GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}), express.static("uploads"));
 
 // Routes
 app.use("/api", route);

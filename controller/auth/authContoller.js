@@ -665,3 +665,128 @@ export const updateUserSuspensionStatus = async (req, res) => {
     return ErrorResponse(res, error.message, 500);
   }
 };
+
+/**
+ * Forgot Password - Send OTP to Admin Email
+ * POST /api/forgot-password
+ */
+export const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return ErrorResponse(res, "Email is required", 400);
+    }
+
+    authLogger.start("Processing forgot password request", { email });
+
+    // Find user by email
+    const user = await userModel.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      authLogger.warn("User not found for forgot password", { email });
+      return ErrorResponse(res, "No user found with this email address", 404);
+    }
+
+    // Check if user is Admin
+    if (user.role !== "Admin") {
+      authLogger.warn("Non-admin user attempted password reset", { email, role: user.role });
+      return ErrorResponse(res, "Password reset is only available for administrators", 403);
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const otpExpiry = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+
+    // Update user with OTP
+    user.otp = otp;
+    user.otpExpiry = otpExpiry;
+    user.resetPasswordToken = otp; // Using OTP as reset token
+    await user.save();
+
+    // Send OTP via email
+    await sendOtpEmail(user.email, otp);
+
+    authLogger.success("Password reset OTP sent successfully", { email });
+
+    return successResponseWithData(
+      res,
+      "Password reset OTP sent to your email. Valid for 5 minutes.",
+      {
+        email: user.email,
+        message: "Please check your email for the OTP code",
+        otp: otp, // Include OTP in response for testing
+      }
+    );
+  } catch (error) {
+    authLogger.error("Error in forgot password", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Reset Password with OTP
+ * POST /api/reset-password
+ */
+export const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword, confirmPassword } = req.body;
+
+    if (!email || !otp || !newPassword || !confirmPassword) {
+      return ErrorResponse(res, "All fields are required", 400);
+    }
+
+    if (newPassword !== confirmPassword) {
+      return ErrorResponse(res, "Passwords do not match", 400);
+    }
+
+    if (newPassword.length < 6) {
+      return ErrorResponse(res, "Password must be at least 6 characters", 400);
+    }
+
+    authLogger.start("Processing password reset", { email });
+
+    // Find user by email
+    const user = await userModel.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      authLogger.warn("User not found for password reset", { email });
+      return ErrorResponse(res, "Invalid email or OTP", 401);
+    }
+
+    // Check if user is Admin
+    if (user.role !== "Admin") {
+      authLogger.warn("Non-admin user attempted password reset", { email, role: user.role });
+      return ErrorResponse(res, "Password reset is only available for administrators", 403);
+    }
+
+    // Verify OTP
+    if (user.otp !== otp) {
+      authLogger.warn("Invalid OTP for password reset", { email });
+      return ErrorResponse(res, "Invalid OTP", 401);
+    }
+
+    // Check OTP expiry
+    if (user.otpExpiry < new Date()) {
+      authLogger.warn("Expired OTP for password reset", { email });
+      return ErrorResponse(res, "OTP has expired. Please request a new one.", 401);
+    }
+
+    // Hash new password
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Update password and clear OTP
+    user.password = hashedPassword;
+    user.otp = undefined;
+    user.otpExpiry = undefined;
+    user.resetPasswordToken = undefined;
+    await user.save();
+
+    authLogger.success("Password reset successfully", { email });
+
+    return successResponse(res, "Password reset successfully. Please login with your new password.");
+  } catch (error) {
+    authLogger.error("Error in reset password", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};

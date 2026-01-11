@@ -1,5 +1,7 @@
 import userModel from "../../models/authModel.js";
 import { comparePassword, hashPassword } from "../../middleware/authMiddleware.js";
+import fs from "fs";
+import path from "path";
 import {
   ErrorResponse,
   successResponse,
@@ -552,6 +554,104 @@ export const deleteUserAccount = async (req, res) => {
     return successResponse(res, "Account deleted successfully");
   } catch (error) {
     userLogger.error("Error deleting account", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Upload Profile Picture
+ * User can upload/update their profile picture
+ * POST /api/user/upload-profile-picture
+ */
+export const uploadProfilePicture = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    if (!req.file) {
+      return ErrorResponse(res, "No file uploaded", 400);
+    }
+
+    userLogger.start("Uploading profile picture", { userId, filename: req.file.filename });
+
+    const user = await userModel.findById(userId);
+
+    if (!user) {
+      // Delete uploaded file if user not found
+      fs.unlinkSync(req.file.path);
+      return notFoundResponse(res, "User not found");
+    }
+
+    // Delete old profile picture if exists
+    if (user.profilePicture) {
+      const oldPicturePath = path.join(process.cwd(), user.profilePicture);
+      if (fs.existsSync(oldPicturePath)) {
+        fs.unlinkSync(oldPicturePath);
+        userLogger.info("Old profile picture deleted", { oldPath: user.profilePicture });
+      }
+    }
+
+    // Save new profile picture path
+    const profilePicturePath = `/uploads/${req.file.filename}`;
+    user.profilePicture = profilePicturePath;
+    await user.save();
+
+    userLogger.success("Profile picture uploaded successfully", { userId, path: profilePicturePath });
+
+    return successResponseWithData(
+      res,
+      "Profile picture uploaded successfully",
+      {
+        profilePicture: profilePicturePath,
+        fullUrl: `${req.protocol}://${req.get('host')}${profilePicturePath}`,
+      }
+    );
+  } catch (error) {
+    // Clean up uploaded file on error
+    if (req.file) {
+      fs.unlinkSync(req.file.path);
+    }
+    userLogger.error("Error uploading profile picture", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Delete Profile Picture
+ * User can delete their profile picture
+ * DELETE /api/user/delete-profile-picture
+ */
+export const deleteProfilePicture = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    userLogger.start("Deleting profile picture", { userId });
+
+    const user = await userModel.findById(userId);
+
+    if (!user) {
+      return notFoundResponse(res, "User not found");
+    }
+
+    if (!user.profilePicture) {
+      return ErrorResponse(res, "No profile picture to delete", 400);
+    }
+
+    // Delete file from filesystem
+    const picturePath = path.join(process.cwd(), user.profilePicture);
+    if (fs.existsSync(picturePath)) {
+      fs.unlinkSync(picturePath);
+      userLogger.info("Profile picture file deleted", { path: user.profilePicture });
+    }
+
+    // Remove from database
+    user.profilePicture = null;
+    await user.save();
+
+    userLogger.success("Profile picture deleted successfully", { userId });
+
+    return successResponse(res, "Profile picture deleted successfully");
+  } catch (error) {
+    userLogger.error("Error deleting profile picture", error);
     return ErrorResponse(res, error.message, 500);
   }
 };

@@ -1,5 +1,6 @@
 import express from "express";
 import { requireSignin, isAdmin } from "../../middleware/authMiddleware.js";
+import { uploadImage } from "../../middleware/multerConfig.js";
 import {
   updateUserProfile,
   getUserProfile,
@@ -13,6 +14,8 @@ import {
   getUserStatistics,
   deleteUserAccount,
   resetDailyLoginCounts,
+  uploadProfilePicture,
+  deleteProfilePicture,
 } from "./userController.js";
 
 const router = express.Router();
@@ -24,6 +27,15 @@ router.put("/user/update-profile", requireSignin, updateUserProfile);
 router.get("/user/profile", requireSignin, getUserProfile);
 router.post("/user/change-password", requireSignin, changePassword);
 router.post("/user/delete-account", requireSignin, deleteUserAccount);
+
+// Profile picture endpoints
+router.post(
+  "/user/upload-profile-picture",
+  requireSignin,
+  uploadImage.single("profilePicture"),
+  uploadProfilePicture
+);
+router.delete("/user/delete-profile-picture", requireSignin, deleteProfilePicture);
 
 // ==================== ADMIN ROUTES ====================
 

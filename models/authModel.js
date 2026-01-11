@@ -29,6 +29,11 @@ const UserSchema = new mongoose.Schema({
         type: String,
     },
     
+    profilePicture: {
+        type: String,
+        default: null,
+    },
+    
     referralCode : {
         type: String,
         
