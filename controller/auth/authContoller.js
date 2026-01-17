@@ -667,14 +667,18 @@ export const updateUserSuspensionStatus = async (req, res) => {
 };
 
 /**
- * Forgot Password - Send OTP to Admin Email
+ * Forgot Password - Send OTP to User Email
  * POST /api/forgot-password
+ * Public route - accessible to all users
  */
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    
+    console.log('[Forgot Password] Request received:', { body: req.body, email });
 
     if (!email) {
+      console.log('[Forgot Password] Email is missing from request');
       return ErrorResponse(res, "Email is required", 400);
     }
 
@@ -686,12 +690,6 @@ export const forgotPassword = async (req, res) => {
     if (!user) {
       authLogger.warn("User not found for forgot password", { email });
       return ErrorResponse(res, "No user found with this email address", 404);
-    }
-
-    // Check if user is Admin
-    if (user.role !== "Admin") {
-      authLogger.warn("Non-admin user attempted password reset", { email, role: user.role });
-      return ErrorResponse(res, "Password reset is only available for administrators", 403);
     }
 
     // Generate OTP
@@ -752,12 +750,6 @@ export const resetPassword = async (req, res) => {
     if (!user) {
       authLogger.warn("User not found for password reset", { email });
       return ErrorResponse(res, "Invalid email or OTP", 401);
-    }
-
-    // Check if user is Admin
-    if (user.role !== "Admin") {
-      authLogger.warn("Non-admin user attempted password reset", { email, role: user.role });
-      return ErrorResponse(res, "Password reset is only available for administrators", 403);
     }
 
     // Verify OTP
