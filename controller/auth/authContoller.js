@@ -2,7 +2,6 @@ import { comparePassword, hashPassword } from "../../middleware/authMiddleware.j
 import userModel from "../../models/authModel.js";
 import Jwt from "jsonwebtoken";
 import twilio from "twilio";
-import nodemailer from "nodemailer";
 import {
   ErrorResponse,
   successResponse,
@@ -12,6 +11,7 @@ import {
 import paymentModel from "../../models/paymentModel.js";
 import { createSession, enforceSignleSession } from "../session/sessionController.js";
 import logger from "../../helpers/logger.js";
+import { sendOtpEmail, sendWelcomeEmail, sendPasswordResetConfirmation } from "../../services/emailService.js";
 
 const authLogger = logger.module("AUTH_CONTROLLER");
 const generateOTP = () => Math.floor(100000 + Math.random() * 900000).toString();
@@ -42,41 +42,6 @@ export const sendOtpSms = async (phone, otp) => {
   }
 };
 
-export const sendOtpEmail = async (email, otp) => {
-  if (!email) {
-    authLogger.warn("No email provided to sendOtpEmail()");
-    return;
-  }
-
-  try {
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: "harshit.inventcolab@gmail.com",
-        pass: "xggpvgdhddkzyecb",
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    await transporter.sendMail({
-      from: `"Opt" <test@gmail.com}>`,
-      to: email, 
-      subject: "Your OTP Code",
-      html: `
-        <h2>🔐 Login OTP</h2>
-        <p>Your one-time password (OTP) is:</p>
-        <h3 style="color:#2E86C1;">${otp}</h3>
-        <p>This code is valid for <b>1 minute</b>.</p>
-      `,
-    });
-
-    authLogger.notification(`OTP sent via Email to: ${email}`);
-  } catch (error) {
-    authLogger.error("Error sending OTP Email", error.message);
-  }
-};
 export const register = async (req, res) => {
   try {
     authLogger.start("User registration process", { module: "REGISTER" });
@@ -109,7 +74,7 @@ export const register = async (req, res) => {
 
     authLogger.success(`User ${email} registered successfully`, { userId: newUser._id });
     // await sendOtpSms(phone, otp);
-    // await sendOtpEmail(email, otp);
+    await sendOtpEmail(email, otp, 'register');
 
     return successResponseWithData(
       res,
@@ -182,6 +147,11 @@ export const verifyOtp = async (req, res) => {
       expiresIn: "1d",
     });
 
+    // Send welcome email for first-time verification
+    if (user.role !== "Admin") {
+      await sendWelcomeEmail(user.email, `${user.fname} ${user.lname}`);
+    }
+
     authLogger.success(`User ${email} successfully verified and logged in`);
     return successResponseWithData(res, "OTP verified successfully", {
       user: {
@@ -231,7 +201,7 @@ export const resendOtp = async (req, res) => {
     }
     if (user.email) {
       authLogger.info(`Attempting to send Email to: ${user.email}`);
-      // await sendOtpEmail(user.email, newOtp);
+      await sendOtpEmail(user.email, newOtp, 'login');
     }
 
     authLogger.success(`New OTP resent successfully for user: ${email}`);
@@ -336,6 +306,9 @@ export const login = async (req, res) => {
     if (user.phone) {
       // await sendOtpSms(user.phone, otp);
     }
+    
+    // Send OTP via email
+    await sendOtpEmail(user.email, otp, 'login');
 
     authLogger.success(`Login successful for user: ${email}`, { loginsToday: user.dailyLoginCount });
     return successResponseWithData(
@@ -703,7 +676,7 @@ export const forgotPassword = async (req, res) => {
     await user.save();
 
     // Send OTP via email
-    await sendOtpEmail(user.email, otp);
+    await sendOtpEmail(user.email, otp, 'reset-password');
 
     authLogger.success("Password reset OTP sent successfully", { email });
 
@@ -773,6 +746,9 @@ export const resetPassword = async (req, res) => {
     user.otpExpiry = undefined;
     user.resetPasswordToken = undefined;
     await user.save();
+
+    // Send confirmation email
+    await sendPasswordResetConfirmation(user.email);
 
     authLogger.success("Password reset successfully", { email });
 
