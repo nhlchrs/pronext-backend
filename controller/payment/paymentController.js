@@ -6,6 +6,7 @@
 import nowpaymentsService from "../../helpers/nowpaymentsService.js";
 import paymentModel from "../../models/paymentModel.js";
 import userModel from "../../models/authModel.js";
+import { generatePurchaseCommissions } from "../../helpers/commissionService.js";
 import {
   ErrorResponse,
   successResponse,
@@ -457,7 +458,7 @@ export const handleIPNCallback = async (req, res) => {
         {
           subscriptionStatus: true,
           subscriptionTier: subscriptionTier,
-          subscriptionExpiryDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+          subscriptionExpiryDate: new Date(Date.now() + 360 * 24 * 60 * 60 * 1000), // 360 days (1 year)
           lastPaymentDate: new Date(),
           subscriptionActivatedDate: new Date(),
         },
@@ -474,6 +475,24 @@ export const handleIPNCallback = async (req, res) => {
         currency: pay_currency,
         expiryDate: updatedUser?.subscriptionExpiryDate,
       });
+
+      // Generate commissions for referrers and upline
+      try {
+        const commissions = await generatePurchaseCommissions(
+          paymentRecord.userId,
+          amount,
+          paymentRecord._id
+        );
+
+        paymentLogger.success("💰 Commissions generated for purchase", {
+          userId: paymentRecord.userId,
+          commissionsCount: commissions.length,
+          totalCommissions: commissions.reduce((sum, c) => sum + c.netAmount, 0),
+        });
+      } catch (commissionError) {
+        paymentLogger.error("⚠️ Error generating commissions", commissionError);
+        // Don't fail the webhook if commission generation fails
+      }
 
       // TODO: Send email notification to user about subscription activation
       // notificationService.sendSubscriptionActivationEmail(updatedUser.email, subscriptionTier);

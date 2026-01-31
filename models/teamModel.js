@@ -83,6 +83,16 @@ const TeamMemberSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    enrollmentDate: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    packageExpiryDate: {
+      type: Date,
+      default: null,
+      index: true,
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -168,69 +178,6 @@ const BonusSchema = new mongoose.Schema(
     },
     description: {
       type: String,
-      default: null,
-    },
-  },
-  { timestamps: true }
-);
-
-// Commission Schema
-const CommissionSchema = new mongoose.Schema(
-  {
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Users",
-      required: true,
-      unique: true,
-      index: true,
-    },
-    totalCommission: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    totalPaid: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    totalPending: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-    payoutHistory: [
-      {
-        amount: {
-          type: Number,
-          required: true,
-        },
-        date: {
-          type: Date,
-          default: Date.now,
-        },
-        method: {
-          type: String,
-          enum: ["bank_transfer", "paypal", "crypto", "pending"],
-          default: "pending",
-        },
-        status: {
-          type: String,
-          enum: ["pending", "completed", "failed"],
-          default: "pending",
-        },
-        transactionId: {
-          type: String,
-          default: null,
-        },
-      },
-    ],
-    lastPayoutDate: {
-      type: Date,
-      default: null,
-    },
-    nextPayoutDate: {
-      type: Date,
       default: null,
     },
   },
@@ -370,13 +317,12 @@ TeamMemberSchema.index({ userId: 1, isActive: 1 });
 TeamMemberSchema.index({ sponsorId: 1 });
 ReferralSchema.index({ referrerId: 1, referralDate: -1 });
 BonusSchema.index({ userId: 1, status: 1 });
-CommissionSchema.index({ userId: 1 });
 
 // Export Models
+// Note: Commission model is now in separate commissionModel.js file
 export const Team = mongoose.model("Team", TeamSchema);
 export const TeamMember = mongoose.model("TeamMember", TeamMemberSchema);
 export const Referral = mongoose.model("Referral", ReferralSchema);
 export const Bonus = mongoose.model("Bonus", BonusSchema);
-export const Commission = mongoose.model("Commission", CommissionSchema);
 
 export default Team;

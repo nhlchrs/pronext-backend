@@ -15,6 +15,7 @@ import paymentRoute from "./controller/payment/payment.js";
 import kycRoute from "./controller/kyc/kyc.js";
 import adminTeamRoute from "./controller/team/adminTeam.js";
 import teamRoute from "./controller/team/team.js";
+import commissionRoute from "./controller/team/commissionRoutes.js";
 import secureMediaRoute from "./controller/secureMedia/secureMedia.js";
 import cors from "cors";
 import morgan from "morgan";
@@ -137,6 +138,7 @@ app.use("/api/payments", paymentRoute);
 app.use("/api", kycRoute);
 app.use("/api", adminTeamRoute);
 app.use("/api", teamRoute);
+app.use("/api", commissionRoute);
 app.use("/api", secureMediaRoute);
 
 // Socket.io setup

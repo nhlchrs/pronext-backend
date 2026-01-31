@@ -1,4 +1,5 @@
-import { TeamMember, Referral, Bonus, Commission } from "../../models/teamModel.js";
+import { TeamMember, Referral, Bonus } from "../../models/teamModel.js";
+import Commission from "../../models/commissionModel.js";
 import User from "../../models/authModel.js";
 import Team from "../../models/teamModel.js";
 import logger from "../../helpers/logger.js";
