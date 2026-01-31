@@ -95,11 +95,21 @@ export const createTeamMember = async (userId, sponsorId, packagePrice) => {
     const generateReferralCode = (userId) => {
       return `PRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
     };
+    const generateLeftReferralCode = (userId) => {
+      return `LPRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
+    };
+    const generateRightReferralCode = (userId) => {
+      return `RPRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
+    };
 
     const referralCode = generateReferralCode(userId);
+    const leftReferralCode = generateLeftReferralCode(userId);
+    const rightReferralCode = generateRightReferralCode(userId);
     const newMember = new TeamMember({
       userId,
       referralCode,
+      leftReferralCode,
+      rightReferralCode,
       packagePrice: packagePrice || 0,
     });
 
@@ -125,7 +135,7 @@ export const createTeamMember = async (userId, sponsorId, packagePrice) => {
     const commission = new Commission({ userId });
     await commission.save();
 
-    adminLogger.success("Team member created", { userId, referralCode });
+    adminLogger.success("Team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
 
     return {
       success: true,

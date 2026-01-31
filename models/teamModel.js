@@ -22,6 +22,18 @@ const TeamMemberSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    leftReferralCode: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+    rightReferralCode: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
     teamMembers: [
       {
         type: mongoose.Schema.Types.ObjectId,

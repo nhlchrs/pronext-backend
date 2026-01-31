@@ -22,6 +22,20 @@ export const generateReferralCode = (userId) => {
   return `PRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
 };
 
+/**
+ * Generate left team referral code (Lpro)
+ */
+export const generateLeftReferralCode = (userId) => {
+  return `LPRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
+};
+
+/**
+ * Generate right team referral code (Rpro)
+ */
+export const generateRightReferralCode = (userId) => {
+  return `RPRO-${userId.toString().slice(-6).toUpperCase()}-${uuidv4().slice(0, 8).toUpperCase()}`;
+};
+
 // Get or Create Team Member
 export const getOrCreateTeamMember = async (userId) => {
   try {
@@ -31,14 +45,18 @@ export const getOrCreateTeamMember = async (userId) => {
 
     if (!teamMember) {
       const referralCode = generateReferralCode(userId);
-      teamLogger.debug("Creating new team member", { userId, referralCode });
+      const leftReferralCode = generateLeftReferralCode(userId);
+      const rightReferralCode = generateRightReferralCode(userId);
+      teamLogger.debug("Creating new team member", { userId, referralCode, leftReferralCode, rightReferralCode });
 
       teamMember = new TeamMember({
         userId,
         referralCode,
+        leftReferralCode,
+        rightReferralCode,
       });
       await teamMember.save();
-      teamLogger.success("New team member created", { userId, referralCode });
+      teamLogger.success("New team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
     } else {
       teamLogger.debug("Team member found", { userId });
     }
@@ -580,16 +598,20 @@ export const initMembership = async (userId) => {
     }
 
     const referralCode = generateReferralCode(userId);
+    const leftReferralCode = generateLeftReferralCode(userId);
+    const rightReferralCode = generateRightReferralCode(userId);
     teamMember = new TeamMember({
       userId,
       referralCode,
+      leftReferralCode,
+      rightReferralCode,
       isActive: true,
     });
 
     const commission = new Commission({ userId });
     await Promise.all([teamMember.save(), commission.save()]);
 
-    teamLogger.success("Team membership created", { userId, referralCode });
+    teamLogger.success("Team membership created", { userId, referralCode, leftReferralCode, rightReferralCode });
 
     return {
       success: true,
@@ -770,9 +792,13 @@ export const createTeamMember = async (userId, sponsorId, packagePrice) => {
     }
 
     const referralCode = generateReferralCode(userId);
+    const leftReferralCode = generateLeftReferralCode(userId);
+    const rightReferralCode = generateRightReferralCode(userId);
     const newMember = new TeamMember({
       userId,
       referralCode,
+      leftReferralCode,
+      rightReferralCode,
       packagePrice: packagePrice || 0,
     });
 
@@ -798,7 +824,7 @@ export const createTeamMember = async (userId, sponsorId, packagePrice) => {
     const commission = new Commission({ userId });
     await commission.save();
 
-    teamLogger.success("Team member created", { userId, referralCode });
+    teamLogger.success("Team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
 
     return {
       success: true,
@@ -1067,7 +1093,14 @@ export const validateReferralCode = async (code) => {
       };
     }
 
-    const teamMember = await TeamMember.findOne({ referralCode: code }).populate(
+    // Check all three types of referral codes
+    const teamMember = await TeamMember.findOne({ 
+      $or: [
+        { referralCode: code },
+        { leftReferralCode: code },
+        { rightReferralCode: code }
+      ]
+    }).populate(
       "userId",
       "fname lname email"
     );
@@ -1086,13 +1119,22 @@ export const validateReferralCode = async (code) => {
       };
     }
 
-    teamLogger.success("Referral code validated", { code, referrerId: teamMember.userId });
+    // Determine which type of code was used
+    let codeType = "main";
+    if (code === teamMember.leftReferralCode) {
+      codeType = "left";
+    } else if (code === teamMember.rightReferralCode) {
+      codeType = "right";
+    }
+
+    teamLogger.success("Referral code validated", { code, referrerId: teamMember.userId, codeType });
 
     return {
       success: true,
       message: "Referral code is valid",
       data: {
         referralCode: code,
+        codeType: codeType,
         referrerId: teamMember.userId._id,
         referrerName: `${teamMember.userId.fname} ${teamMember.userId.lname}`,
         referrerLevel: teamMember.level,
@@ -1276,7 +1318,11 @@ export const getMyReferralCode = async (userId) => {
       success: true,
       data: {
         referralCode: teamMember.referralCode,
+        leftReferralCode: teamMember.leftReferralCode,
+        rightReferralCode: teamMember.rightReferralCode,
         referralLink: `${process.env.FRONTEND_URL || "http://localhost:3000"}/join?ref=${teamMember.referralCode}`,
+        leftReferralLink: `${process.env.FRONTEND_URL || "http://localhost:3000"}/join?ref=${teamMember.leftReferralCode}`,
+        rightReferralLink: `${process.env.FRONTEND_URL || "http://localhost:3000"}/join?ref=${teamMember.rightReferralCode}`,
         userInfo: {
           name: `${teamMember.userId.fname} ${teamMember.userId.lname}`,
           email: teamMember.userId.email,
@@ -1633,6 +1679,8 @@ export const getReferralStats = async (userId) => {
       totalEarnings: member.totalEarnings || 0,
       currentLevel: member.level || 0,
       referralCode: member.referralCode,
+      leftReferralCode: member.leftReferralCode,
+      rightReferralCode: member.rightReferralCode,
     };
 
     teamLogger.success("Referral stats retrieved", stats);
