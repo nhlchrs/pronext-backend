@@ -1173,13 +1173,27 @@ export const applyReferralCode = async (userId, code) => {
     }
 
     // Validate the referral code
-    const referrerMember = await TeamMember.findOne({ referralCode: code });
+    const referrerMember = await TeamMember.findOne({ 
+      $or: [
+        { referralCode: code },
+        { leftReferralCode: code },
+        { rightReferralCode: code }
+      ]
+    });
 
     if (!referrerMember) {
       return {
         success: false,
         message: "Invalid referral code",
       };
+    }
+
+    // Determine which code type was used
+    let codeType = "main";
+    if (code === referrerMember.leftReferralCode) {
+      codeType = "left";
+    } else if (code === referrerMember.rightReferralCode) {
+      codeType = "right";
     }
 
     if (!referrerMember.isActive) {
@@ -1190,7 +1204,7 @@ export const applyReferralCode = async (userId, code) => {
     }
 
     // Check if user is trying to use their own referral code
-    if (existingMember && existingMember.referralCode === code) {
+    if (existingMember && (existingMember.referralCode === code || existingMember.leftReferralCode === code || existingMember.rightReferralCode === code)) {
       return {
         success: false,
         message: "You cannot use your own referral code",
@@ -1202,17 +1216,23 @@ export const applyReferralCode = async (userId, code) => {
 
     // If user already has a TeamMember record (from init-membership) but no sponsor
     if (existingMember) {
-      teamLogger.info("Updating existing member with sponsor", { userId, code });
+      teamLogger.info("Updating existing member with sponsor", { userId, code, codeType });
       existingMember.sponsorId = referrerMember._id;
+      existingMember.position = codeType;
       teamMember = existingMember;
     } else {
       // Create new team member
-      teamLogger.info("Creating new team member with sponsor", { userId, code });
+      teamLogger.info("Creating new team member with sponsor", { userId, code, codeType });
       const newReferralCode = generateReferralCode(userId);
+      const leftCode = generateLeftReferralCode(userId);
+      const rightCode = generateRightReferralCode(userId);
       teamMember = new TeamMember({
         userId,
         sponsorId: referrerMember._id,
         referralCode: newReferralCode,
+        leftReferralCode: leftCode,
+        rightReferralCode: rightCode,
+        position: codeType,
         isActive: true,
       });
       isNewMember = true;
@@ -1671,6 +1691,20 @@ export const getReferralStats = async (userId) => {
       directCount: { $gt: 0 },
     });
 
+    // Count members by position
+    const leftTeamMembers = await TeamMember.countDocuments({
+      sponsorId: member._id,
+      position: "left",
+    });
+    const rightTeamMembers = await TeamMember.countDocuments({
+      sponsorId: member._id,
+      position: "right",
+    });
+    const mainTeamMembers = await TeamMember.countDocuments({
+      sponsorId: member._id,
+      position: "main",
+    });
+
     const stats = {
       totalTeam,
       directReferrals,
@@ -1681,6 +1715,10 @@ export const getReferralStats = async (userId) => {
       referralCode: member.referralCode,
       leftReferralCode: member.leftReferralCode,
       rightReferralCode: member.rightReferralCode,
+      userPosition: member.position,
+      leftTeamCount: leftTeamMembers,
+      rightTeamCount: rightTeamMembers,
+      mainTeamCount: mainTeamMembers,
     };
 
     teamLogger.success("Referral stats retrieved", stats);

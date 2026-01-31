@@ -34,6 +34,12 @@ const TeamMemberSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
+    position: {
+      type: String,
+      enum: ["main", "left", "right"],
+      default: "main",
+      index: true,
+    },
     teamMembers: [
       {
         type: mongoose.Schema.Types.ObjectId,
