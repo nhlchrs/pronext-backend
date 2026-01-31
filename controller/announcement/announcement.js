@@ -13,7 +13,7 @@ import {
   bulkUpdateStatus,
 } from "./anouncementController.js";
 
-import { requireSignin, isAdmin } from "../../middleware/authMiddleware.js";
+import { requireSignin, isAdmin, isStaff } from "../../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -21,8 +21,8 @@ const router = express.Router();
  * Admin Routes (Announcements Management)
  */
 
-// Create announcement
-router.post("/announcements", requireSignin, isAdmin, createAnnouncement);
+// Create announcement (Staff can create)
+router.post("/announcements", requireSignin, isStaff, createAnnouncement);
 
 // Get all announcements (with filters)
 router.get("/announcements", requireSignin, getAllAnnouncements);
@@ -36,10 +36,10 @@ router.get("/announcements/flag/:flag", requireSignin, getAnnouncementsByFlag);
 // Get specific announcement
 router.get("/announcements/:id", requireSignin, getAnnouncementById);
 
-// Update announcement
-router.put("/announcements/:id", requireSignin, isAdmin, updateAnnouncement);
+// Update announcement (Staff can update)
+router.put("/announcements/:id", requireSignin, isStaff, updateAnnouncement);
 
-// Delete announcement
+// Delete announcement (Admin only)
 router.delete("/announcements/:id", requireSignin, isAdmin, deleteAnnouncement);
 
 // Track click

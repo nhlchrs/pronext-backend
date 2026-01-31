@@ -1,5 +1,6 @@
 import express from "express";
 import authMiddleware from "../../middleware/authMiddleware.js";
+import { requireSignin, isStaff } from "../../middleware/authMiddleware.js";
 import {
   getDashboardSummary,
   getPayoutTrends,
@@ -12,6 +13,7 @@ import {
   downloadReport,
   getPerformanceMetrics,
   getAdvancedAnalytics,
+  getAdminAnalytics,
 } from "./analyticsController.js";
 
 const router = express.Router();
@@ -82,6 +84,14 @@ router.post(
   "/advanced",
   authMiddleware,
   getAdvancedAnalytics
+);
+
+// Admin Panel Analytics Route
+router.get(
+  "/",
+  requireSignin,
+  isStaff,
+  getAdminAnalytics
 );
 
 // File download route

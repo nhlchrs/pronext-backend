@@ -1,5 +1,5 @@
 import express from "express";
-import { requireSignin, isAdmin } from "../../middleware/authMiddleware.js";
+import { requireSignin, isAdmin, isStaff } from "../../middleware/authMiddleware.js";
 import { uploadImage } from "../../middleware/multerConfig.js";
 import {
   updateUserProfile,
@@ -50,11 +50,11 @@ router.post("/admin/user/:userId/suspend", requireSignin, isAdmin, suspendUserAc
 router.post("/admin/user/:userId/reactivate", requireSignin, isAdmin, reactivateUserAccount);
 router.delete("/admin/user/:userId/block", requireSignin, isAdmin, blockUserPermanently);
 
-// Admin user viewing endpoints
-router.get("/admin/users", requireSignin, isAdmin, getAllUsers);
-router.get("/admin/user/:userId", requireSignin, isAdmin, getUserById);
+// Admin user viewing endpoints (Staff can view users)
+router.get("/admin/users", requireSignin, isStaff, getAllUsers);
+router.get("/admin/user/:userId", requireSignin, isStaff, getUserById);
 router.put("/admin/user/:userId/role", requireSignin, isAdmin, updateUserRole);
-router.get("/admin/user-stats", requireSignin, isAdmin, getUserStatistics);
+router.get("/admin/user-stats", requireSignin, isStaff, getUserStatistics);
 router.post("/admin/reset-login-counts", requireSignin, isAdmin, resetDailyLoginCounts);
 
 export default router;

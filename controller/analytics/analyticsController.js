@@ -732,3 +732,65 @@ export const getAdvancedAnalytics = async (req, res) => {
     return ErrorResponse(res, error.message, 500);
   }
 };
+
+/**
+ * Get Analytics Data for Admin Panel
+ * GET /api/admin/analytics
+ */
+export const getAdminAnalytics = async (req, res) => {
+  try {
+    analyticsLogger.start("Fetching admin analytics data");
+
+    // Get total users count
+    const totalUsers = await userModel.countDocuments({ isDeleted: { $ne: true } });
+
+    // Get active users (logged in within last 30 days or not suspended/blocked)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const activeUsers = await userModel.countDocuments({
+      isDeleted: { $ne: true },
+      isSuspended: false,
+      isBlocked: false
+    });
+
+    // Get revenue from AnalyticsModel or calculate from payments
+    let totalRevenue = 0;
+    try {
+      const revenueAnalytics = await AnalyticsModel.findOne({}).sort({ updatedAt: -1 });
+      if (revenueAnalytics && revenueAnalytics.revenue) {
+        totalRevenue = revenueAnalytics.revenue.total || 0;
+      }
+    } catch (err) {
+      analyticsLogger.warn("Could not fetch revenue from analytics", err);
+    }
+
+    // Calculate growth rate (comparing last 30 days vs previous 30 days)
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+    
+    const previousPeriodUsers = await userModel.countDocuments({
+      createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
+    });
+    
+    const currentPeriodUsers = await userModel.countDocuments({
+      createdAt: { $gte: thirtyDaysAgo }
+    });
+
+    const monthlyGrowth = previousPeriodUsers > 0 
+      ? ((currentPeriodUsers - previousPeriodUsers) / previousPeriodUsers * 100).toFixed(1)
+      : 0;
+
+    const analytics = {
+      totalRevenue,
+      totalUsers,
+      activeUsers,
+      monthlyGrowth: parseFloat(monthlyGrowth)
+    };
+
+    analyticsLogger.success("Admin analytics data fetched successfully", analytics);
+    return successResponseWithData(res, "Analytics data fetched successfully", analytics);
+  } catch (error) {
+    analyticsLogger.error("Error fetching admin analytics data", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};

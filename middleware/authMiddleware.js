@@ -109,6 +109,59 @@ export const isAdmin = (req, res, next) => {
 };
 
 /**
+ * Check if user is Support
+ */
+export const isSupport = (req, res, next) => {
+  try {
+    console.log(`[SUPPORT CHECK] Route: ${req.method} ${req.path}`);
+    console.log(`[SUPPORT CHECK] User role: ${req.user?.role}`);
+    
+    if (!req.user || req.user.role !== "Support") {
+      console.log(`[SUPPORT CHECK] Access denied - Support role required`);
+      return res.status(403).json({
+        success: false,
+        message: "Support access required"
+      });
+    }
+    console.log(`[SUPPORT CHECK] Access granted`);
+    next();
+  } catch (error) {
+    console.log(`[SUPPORT CHECK] Error: ${error.message}`);
+    return res.status(403).json({
+      success: false,
+      message: "Access denied"
+    });
+  }
+};
+
+/**
+ * Check if user is Admin or Support (Staff)
+ */
+export const isStaff = (req, res, next) => {
+  try {
+    console.log(`[STAFF CHECK] Route: ${req.method} ${req.path}`);
+    console.log(`[STAFF CHECK] User role: ${req.user?.role}`);
+    
+    if (!req.user || (req.user.role !== "Admin" && req.user.role !== "Support")) {
+      console.log(`[STAFF CHECK] Access denied - Admin or Support role required`);
+      return res.status(403).json({
+        success: false,
+        message: "Staff access required"
+      });
+    }
+    console.log(`[STAFF CHECK] Access granted`);
+    next();
+  } catch (error) {
+    console.log(`[STAFF CHECK] Error: ${error.message}`);
+    return res.status(403).json({
+      success: false,
+      message: "Access denied"
+    });
+  }
+};
+
+
+/**
  * Check if user is verified (KYC verified)
  */
 export const isVerified = (req, res, next) => {
