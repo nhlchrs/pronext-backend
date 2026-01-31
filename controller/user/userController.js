@@ -659,3 +659,79 @@ export const deleteProfilePicture = async (req, res) => {
     return ErrorResponse(res, error.message, 500);
   }
 };
+
+/**
+ * Agree to Terms & Conditions
+ * User agrees to terms and conditions
+ * POST /api/user/agree-to-terms
+ */
+export const agreeToTerms = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    userLogger.start("User agreeing to terms", { userId });
+
+    const user = await userModel.findById(userId);
+
+    if (!user) {
+      return notFoundResponse(res, "User not found");
+    }
+
+    if (user.termsAgreed) {
+      return ErrorResponse(res, "User has already agreed to terms", 400);
+    }
+
+    // Update terms agreement
+    user.termsAgreed = true;
+    user.termsAgreedAt = new Date();
+    await user.save();
+
+    userLogger.success("User agreed to terms", { userId });
+
+    return successResponseWithData(
+      res,
+      "Terms accepted successfully",
+      {
+        termsAgreed: user.termsAgreed,
+        termsAgreedAt: user.termsAgreedAt,
+      }
+    );
+  } catch (error) {
+    userLogger.error("Error agreeing to terms", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Check Terms Agreement Status
+ * Check if user has agreed to terms
+ * GET /api/user/check-terms-agreement
+ */
+export const checkTermsAgreement = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    userLogger.start("Checking terms agreement status", { userId });
+
+    const user = await userModel.findById(userId).select("termsAgreed termsAgreedAt");
+
+    if (!user) {
+      return notFoundResponse(res, "User not found");
+    }
+
+    userLogger.success("Terms agreement status retrieved", { userId, termsAgreed: user.termsAgreed });
+
+    return successResponseWithData(
+      res,
+      "Terms agreement status retrieved",
+      {
+        termsAgreed: user.termsAgreed || false,
+        termsAgreedAt: user.termsAgreedAt || null,
+      }
+    );
+  } catch (error) {
+    userLogger.error("Error checking terms agreement", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+

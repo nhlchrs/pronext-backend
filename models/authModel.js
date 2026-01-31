@@ -186,6 +186,14 @@ const UserSchema = new mongoose.Schema({
     enum: ["User", "Admin", "Finance", "Support", "Educator"],
     default: "User"
   },
+  termsAgreed: {
+    type: Boolean,
+    default: false,
+  },
+  termsAgreedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 export default mongoose.model("Users", UserSchema);

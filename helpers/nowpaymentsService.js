@@ -10,7 +10,12 @@ const nowLogger = logger.module("NOWPAYMENTS");
 
 class NOWPaymentsService {
   constructor() {
-    this.baseUrl = "https://api.nowpayments.io/v1";
+    // Check if sandbox mode is enabled
+    const isSandbox = process.env.NOWPAYMENTS_SANDBOX_MODE === 'true';
+    this.baseUrl = isSandbox 
+      ? "https://api-sandbox.nowpayments.io/v1"  // Sandbox API (test mode)
+      : "https://api.nowpayments.io/v1";         // Production API (real money)
+    this.isSandbox = isSandbox;
     this._apiKey = null;
     this._ipnSecret = null;
     this._initialized = false;
@@ -26,7 +31,9 @@ class NOWPaymentsService {
       if (!this._apiKey) {
         nowLogger.warn("NOWPayments API key not configured in environment variables");
       } else {
-        nowLogger.success("NOWPayments API key loaded");
+        const mode = this.isSandbox ? "🧪 SANDBOX (TEST)" : "🔴 PRODUCTION (LIVE)";
+        nowLogger.success(`NOWPayments initialized in ${mode} mode`);
+        nowLogger.info(`API Endpoint: ${this.baseUrl}`);
       }
     }
   }

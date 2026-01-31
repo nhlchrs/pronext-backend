@@ -16,6 +16,8 @@ import {
   resetDailyLoginCounts,
   uploadProfilePicture,
   deleteProfilePicture,
+  agreeToTerms,
+  checkTermsAgreement,
 } from "./userController.js";
 
 const router = express.Router();
@@ -36,6 +38,10 @@ router.post(
   uploadProfilePicture
 );
 router.delete("/user/delete-profile-picture", requireSignin, deleteProfilePicture);
+
+// Terms & Conditions endpoints
+router.post("/user/agree-to-terms", requireSignin, agreeToTerms);
+router.get("/user/check-terms-agreement", requireSignin, checkTermsAgreement);
 
 // ==================== ADMIN ROUTES ====================
 
