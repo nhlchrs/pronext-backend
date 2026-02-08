@@ -1662,6 +1662,72 @@ export const getDownlineStructure = async (userId, depth = 5) => {
   }
 };
 
+// Get user's own downline only (user as root, no ancestors) - FOR USER PANEL
+export const getUserDownlineOnly = async (userId) => {
+  try {
+    teamLogger.start("Getting user's downline only (user as root)", { userId });
+
+    const currentMember = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email");
+
+    if (!currentMember) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Build hierarchy starting from current user (downline only)
+    const buildDownlineFromUser = async (buildUserId, currentDepth = 0, maxDepth = 10) => {
+      if (currentDepth >= maxDepth) return null;
+
+      const member = await TeamMember.findOne({ userId: buildUserId })
+        .populate("userId", "fname lname email")
+        .populate("teamMembers", "fname lname email");
+
+      if (!member) return null;
+
+      const children = await Promise.all(
+        member.teamMembers.map((teamMemberUser) => {
+          const childUserId = teamMemberUser._id || teamMemberUser;
+          return buildDownlineFromUser(childUserId, currentDepth + 1, maxDepth);
+        })
+      );
+
+      return {
+        _id: member._id,
+        userId: member.userId,
+        referralCode: member.referralCode,
+        directCount: member.directCount,
+        level: member.level,
+        totalEarnings: member.totalEarnings,
+        totalDownline: member.totalDownline || 0,
+        teamMembers: children.filter((child) => child !== null),
+        isCurrentUser: currentDepth === 0, // Mark root as current user
+      };
+    };
+
+    // Start building from the current user (they are the root)
+    const hierarchy = await buildDownlineFromUser(userId, 0, 10);
+
+    teamLogger.success("User's downline retrieved (user as root)", { userId });
+
+    return {
+      success: true,
+      data: {
+        hierarchy,
+        currentUserId: userId.toString(),
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting user's downline", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
 // Get referral statistics for a specific user
 export const getReferralStats = async (userId) => {
   try {

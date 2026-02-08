@@ -20,6 +20,7 @@ import {
   getMyReferrals,
   getMyDownlineStructure,
   getDownlineStructure,
+  getUserDownlineOnly,
   validateReferralCode,
   applyReferralCode,
   getReferralStats,
@@ -145,6 +146,16 @@ router.get("/team/downline-structure/:userId", requireSignin, async (req, res) =
   try {
     const depth = parseInt(req.query.depth) || 5;
     const result = await getDownlineStructure(req.params.userId, depth);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get user's own downline only (user as root, no ancestors) - FOR USER PANEL
+router.get("/team/my-downline", requireSignin, async (req, res) => {
+  try {
+    const result = await getUserDownlineOnly(req.user._id);
     return res.status(result.success ? 200 : 404).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
