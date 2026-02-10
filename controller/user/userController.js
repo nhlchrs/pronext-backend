@@ -755,3 +755,96 @@ export const checkTermsAgreement = async (req, res) => {
   }
 };
 
+/**
+ * Update user's crypto wallet preferences
+ * PUT /api/user/crypto-wallet
+ */
+export const updateCryptoWallet = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { cryptoWalletAddress, cryptoCurrency } = req.body;
+
+    userLogger.start("Updating crypto wallet preferences", { userId });
+
+    // Validate crypto wallet address
+    if (!cryptoWalletAddress || cryptoWalletAddress.trim().length === 0) {
+      return ErrorResponse(res, "Crypto wallet address is required", 400);
+    }
+
+    if (cryptoWalletAddress.trim().length < 26) {
+      return ErrorResponse(res, "Invalid crypto wallet address. Please check and try again", 400);
+    }
+
+    // Validate cryptocurrency type
+    if (!cryptoCurrency || !["USDT", "BTC"].includes(cryptoCurrency)) {
+      return ErrorResponse(res, "Invalid cryptocurrency. Please select USDT or BTC", 400);
+    }
+
+    // Update user's crypto wallet preferences
+    const user = await userModel.findByIdAndUpdate(
+      userId,
+      {
+        cryptoWalletAddress: cryptoWalletAddress.trim(),
+        cryptoCurrency: cryptoCurrency,
+        cryptoWalletUpdatedAt: new Date(),
+      },
+      { new: true, runValidators: true }
+    ).select("cryptoWalletAddress cryptoCurrency cryptoWalletUpdatedAt");
+
+    if (!user) {
+      return notFoundResponse(res, "User not found");
+    }
+
+    userLogger.success("Crypto wallet preferences updated", { 
+      userId, 
+      cryptoCurrency,
+      walletAddressLength: cryptoWalletAddress.length
+    });
+
+    return successResponseWithData(
+      res,
+      "Crypto wallet preferences saved successfully",
+      {
+        cryptoWalletAddress: user.cryptoWalletAddress,
+        cryptoCurrency: user.cryptoCurrency,
+        cryptoWalletUpdatedAt: user.cryptoWalletUpdatedAt,
+      }
+    );
+  } catch (error) {
+    userLogger.error("Error updating crypto wallet", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Get user's crypto wallet preferences
+ * GET /api/user/crypto-wallet
+ */
+export const getCryptoWallet = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    userLogger.start("Getting crypto wallet preferences", { userId });
+
+    const user = await userModel.findById(userId).select("cryptoWalletAddress cryptoCurrency cryptoWalletUpdatedAt");
+
+    if (!user) {
+      return notFoundResponse(res, "User not found");
+    }
+
+    userLogger.success("Crypto wallet preferences retrieved", { userId });
+
+    return successResponseWithData(
+      res,
+      "Crypto wallet preferences retrieved",
+      {
+        cryptoWalletAddress: user.cryptoWalletAddress || null,
+        cryptoCurrency: user.cryptoCurrency || "USDT",
+        cryptoWalletUpdatedAt: user.cryptoWalletUpdatedAt || null,
+      }
+    );
+  } catch (error) {
+    userLogger.error("Error getting crypto wallet", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};

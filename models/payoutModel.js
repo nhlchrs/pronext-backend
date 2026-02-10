@@ -17,7 +17,7 @@ const PayoutSchema = new mongoose.Schema(
 
     payoutMethod: {
       type: String,
-      enum: ["bank_transfer", "upi", "wallet", "cheque"],
+      enum: ["bank_transfer", "upi", "wallet", "cheque", "crypto"],
       required: true,
     },
 
@@ -29,6 +29,22 @@ const PayoutSchema = new mongoose.Schema(
     },
 
     upiId: {
+      type: String,
+      default: null,
+    },
+
+    cryptoWalletAddress: {
+      type: String,
+      default: null,
+    },
+
+    cryptoCurrency: {
+      type: String,
+      enum: ["USDT", "BTC"],
+      default: null,
+    },
+
+    cryptoTransactionHash: {
       type: String,
       default: null,
     },

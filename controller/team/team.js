@@ -24,6 +24,11 @@ import {
   validateReferralCode,
   applyReferralCode,
   getReferralStats,
+  getUserAvailableBalance,
+  createUserPayout,
+  getUserPayoutHistory,
+  getUserPayoutDetails,
+  getUserPayoutStats,
 } from "./teamController.js";
 
 const router = express.Router();
@@ -206,6 +211,104 @@ router.post("/team/request-payout", requireSignin, async (req, res) => {
       return res.status(400).json({ success: false, message: "Valid amount required" });
     }
     const result = await requestPayout(req.user._id, amount);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== USER PAYOUT ROUTES ====================
+
+// Get available balance for payout
+router.get("/team/payout/balance", requireSignin, async (req, res) => {
+  try {
+    const result = await getUserAvailableBalance(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Create payout request with payment details
+router.post("/team/payout/request", requireSignin, async (req, res) => {
+  try {
+    const { amount, payoutMethod, bankDetails, upiId, cryptoWalletAddress, cryptoCurrency, source } = req.body;
+
+    // Validate required fields
+    if (!amount || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid payout amount is required",
+      });
+    }
+
+    if (!payoutMethod) {
+      return res.status(400).json({
+        success: false,
+        message: "Payout method is required (bank_transfer, upi, wallet, cheque, or crypto)",
+      });
+    }
+
+    // Validate payment method specific details
+    if (payoutMethod === "bank_transfer" && !bankDetails) {
+      return res.status(400).json({
+        success: false,
+        message: "Bank details are required for bank transfer",
+      });
+    }
+
+    if (payoutMethod === "upi" && !upiId) {
+      return res.status(400).json({
+        success: false,
+        message: "UPI ID is required for UPI payout",
+      });
+    }
+
+    const payoutData = {
+      amount,
+      payoutMethod,
+      bankDetails,
+      upiId,
+      cryptoWalletAddress,
+      cryptoCurrency,
+      source,
+    };
+
+    const result = await createUserPayout(req.user._id, payoutData);
+    return res.status(result.success ? 201 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get payout history with pagination
+router.get("/team/payout/history", requireSignin, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const result = await getUserPayoutHistory(req.user._id, page, limit);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get specific payout details
+router.get("/team/payout/:payoutId", requireSignin, async (req, res) => {
+  try {
+    const { payoutId } = req.params;
+    const result = await getUserPayoutDetails(req.user._id, payoutId);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get payout statistics
+router.get("/team/payout/stats/summary", requireSignin, async (req, res) => {
+  try {
+    const result = await getUserPayoutStats(req.user._id);
     return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });

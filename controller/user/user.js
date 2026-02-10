@@ -18,6 +18,8 @@ import {
   deleteProfilePicture,
   agreeToTerms,
   checkTermsAgreement,
+  updateCryptoWallet,
+  getCryptoWallet,
 } from "./userController.js";
 
 const router = express.Router();
@@ -42,6 +44,10 @@ router.delete("/user/delete-profile-picture", requireSignin, deleteProfilePictur
 // Terms & Conditions endpoints
 router.post("/user/agree-to-terms", requireSignin, agreeToTerms);
 router.get("/user/check-terms-agreement", requireSignin, checkTermsAgreement);
+
+// Crypto wallet endpoints
+router.put("/user/crypto-wallet", requireSignin, updateCryptoWallet);
+router.get("/user/crypto-wallet", requireSignin, getCryptoWallet);
 
 // ==================== ADMIN ROUTES ====================
 

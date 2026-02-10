@@ -194,6 +194,21 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  // Crypto wallet preferences
+  cryptoWalletAddress: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  cryptoCurrency: {
+    type: String,
+    enum: ["USDT", "BTC", null],
+    default: null,
+  },
+  cryptoWalletUpdatedAt: {
+    type: Date,
+    default: null,
+  },
 }, { timestamps: true });
 
 export default mongoose.model("Users", UserSchema);

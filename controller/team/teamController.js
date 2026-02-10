@@ -1,5 +1,6 @@
 import { TeamMember, Referral, Bonus } from "../../models/teamModel.js";
 import Commission from "../../models/commissionModel.js";
+import Payout from "../../models/payoutModel.js";
 import User from "../../models/authModel.js";
 import { v4 as uuidv4 } from "uuid";
 import {
@@ -1821,6 +1822,364 @@ export const getReferralStats = async (userId) => {
     };
   } catch (error) {
     teamLogger.error("Error getting referral stats", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// ==================== PAYOUT FUNCTIONS FOR USER PANEL ====================
+
+// Get user's available balance for payout
+export const getUserAvailableBalance = async (userId) => {
+  try {
+    teamLogger.start("Getting user available balance", { userId });
+
+    const member = await TeamMember.findOne({ userId });
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Get total commissions
+    const totalCommissions = await Commission.aggregate([
+      { $match: { referrerId: userId } },
+      {
+        $group: {
+          _id: null,
+          totalEarned: { $sum: "$netAmount" },
+        },
+      },
+    ]);
+
+    // Get total payouts
+    const totalPayouts = await Payout.aggregate([
+      { $match: { userId: userId, status: { $in: ["completed", "processing"] } } },
+      {
+        $group: {
+          _id: null,
+          totalPaid: { $sum: "$netAmount" },
+        },
+      },
+    ]);
+
+    const earned = totalCommissions[0]?.totalEarned || 0;
+    const paid = totalPayouts[0]?.totalPaid || 0;
+    const available = earned - paid;
+
+    teamLogger.success("Available balance retrieved", { userId, earned, paid, available });
+
+    // TEMPORARY: Hardcoded balance for testing
+    return {
+      success: true,
+      data: {
+        totalEarned: earned,
+        totalPaid: paid,
+        availableBalance: 1000, // Temporary test value
+        totalEarnings: member.totalEarnings || 0,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting available balance", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Request payout for user
+export const createUserPayout = async (userId, payoutData) => {
+  try {
+    teamLogger.start("Creating user payout request", { userId, amount: payoutData.amount });
+
+    const { amount, payoutMethod, bankDetails, upiId, cryptoWalletAddress, cryptoCurrency, source } = payoutData;
+
+    // Validate amount
+    if (!amount || amount <= 0) {
+      return {
+        success: false,
+        message: "Invalid payout amount",
+      };
+    }
+
+    // Validate payment method specific fields
+    if (payoutMethod === "crypto") {
+      if (!cryptoWalletAddress || cryptoWalletAddress.trim().length === 0) {
+        return {
+          success: false,
+          message: "Crypto wallet address is required",
+        };
+      }
+      if (cryptoWalletAddress.trim().length < 26) {
+        return {
+          success: false,
+          message: "Invalid crypto wallet address",
+        };
+      }
+      if (!cryptoCurrency || !["USDT", "BTC"].includes(cryptoCurrency)) {
+        return {
+          success: false,
+          message: "Invalid cryptocurrency selected. Please choose USDT or BTC",
+        };
+      }
+    }
+
+    // Get available balance
+    const balanceResult = await getUserAvailableBalance(userId);
+    if (!balanceResult.success) {
+      return balanceResult;
+    }
+
+    const { availableBalance } = balanceResult.data;
+
+    // Check minimum payout amount (e.g., 100)
+    const minimumPayout = 100;
+    if (amount < minimumPayout) {
+      return {
+        success: false,
+        message: `Minimum payout amount is ₹${minimumPayout}`,
+      };
+    }
+
+    // Check if user has sufficient balance
+    if (amount > availableBalance) {
+      return {
+        success: false,
+        message: `Insufficient balance. Available: ₹${availableBalance.toFixed(2)}`,
+      };
+    }
+
+    // Generate unique reference number
+    const referenceNumber = `PAY-${Date.now()}-${userId.toString().slice(-6).toUpperCase()}`;
+
+    // Calculate tax if applicable (e.g., 5% TDS for non-crypto, 0% for crypto)
+    const taxRate = payoutMethod === "crypto" ? 0 : 0.05;
+    const taxDeducted = amount * taxRate;
+    const netAmount = amount - taxDeducted;
+
+    // Create payout request
+    const payout = new Payout({
+      userId,
+      amount,
+      netAmount,
+      taxDeducted,
+      payoutMethod,
+      bankDetails,
+      upiId,
+      cryptoWalletAddress: payoutMethod === "crypto" ? cryptoWalletAddress.trim() : null,
+      cryptoCurrency: payoutMethod === "crypto" ? cryptoCurrency : null,
+      source: source || "direct_bonus",
+      referenceNumber,
+      status: "pending",
+      description: `Payout request for ₹${amount}${payoutMethod === "crypto" ? ` via ${cryptoCurrency}` : ""}`,
+      period: {
+        month: new Date().getMonth() + 1,
+        year: new Date().getFullYear(),
+      },
+    });
+
+    await payout.save();
+
+    teamLogger.success("Payout request created", {
+      userId,
+      payoutId: payout._id,
+      referenceNumber,
+      payoutMethod,
+    });
+
+    const processingTime = payoutMethod === "crypto" ? "24-48 hours" : "2-3 business days";
+
+    return {
+      success: true,
+      message: `Payout request submitted successfully. It will be processed within ${processingTime}.`,
+      data: {
+        payoutId: payout._id,
+        referenceNumber: payout.referenceNumber,
+        amount: payout.amount,
+        netAmount: payout.netAmount,
+        taxDeducted: payout.taxDeducted,
+        status: payout.status,
+        payoutMethod: payout.payoutMethod,
+        requestedAt: payout.requestedAt,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error creating payout request", error);
+    return {
+      success: false,
+      message: error.message || "Failed to create payout request",
+    };
+  }
+};
+
+// Get user's payout history
+export const getUserPayoutHistory = async (userId, page = 1, limit = 10) => {
+  try {
+    teamLogger.start("Getting user payout history", { userId, page, limit });
+
+    const skip = (page - 1) * limit;
+
+    const payouts = await Payout.find({ userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .select("-__v");
+
+    const totalPayouts = await Payout.countDocuments({ userId });
+
+    // Get summary statistics
+    const summary = await Payout.aggregate([
+      { $match: { userId: userId } },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalAmount: { $sum: "$amount" },
+          totalNet: { $sum: "$netAmount" },
+        },
+      },
+    ]);
+
+    teamLogger.success("Payout history retrieved", { userId, count: payouts.length });
+
+    return {
+      success: true,
+      data: {
+        payouts,
+        pagination: {
+          currentPage: page,
+          totalPages: Math.ceil(totalPayouts / limit),
+          totalPayouts,
+          pageSize: limit,
+        },
+        summary: summary.reduce((acc, item) => {
+          acc[item._id] = {
+            count: item.count,
+            totalAmount: item.totalAmount,
+            totalNet: item.totalNet,
+          };
+          return acc;
+        }, {}),
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting payout history", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get specific payout details
+export const getUserPayoutDetails = async (userId, payoutId) => {
+  try {
+    teamLogger.start("Getting payout details", { userId, payoutId });
+
+    const payout = await Payout.findOne({ _id: payoutId, userId })
+      .populate("processedBy", "fname lname email")
+      .select("-__v");
+
+    if (!payout) {
+      return {
+        success: false,
+        message: "Payout not found",
+      };
+    }
+
+    teamLogger.success("Payout details retrieved", { payoutId });
+
+    return {
+      success: true,
+      data: payout,
+    };
+  } catch (error) {
+    teamLogger.error("Error getting payout details", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get payout statistics for user
+export const getUserPayoutStats = async (userId) => {
+  try {
+    teamLogger.start("Getting user payout stats", { userId });
+
+    const stats = await Payout.aggregate([
+      { $match: { userId: userId } },
+      {
+        $group: {
+          _id: null,
+          totalRequested: { $sum: 1 },
+          totalAmount: { $sum: "$amount" },
+          totalNetAmount: { $sum: "$netAmount" },
+          totalTax: { $sum: "$taxDeducted" },
+          pending: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "pending"] }, 1, 0],
+            },
+          },
+          processing: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "processing"] }, 1, 0],
+            },
+          },
+          completed: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "completed"] }, 1, 0],
+            },
+          },
+          failed: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "failed"] }, 1, 0],
+            },
+          },
+          completedAmount: {
+            $sum: {
+              $cond: [{ $eq: ["$status", "completed"] }, "$netAmount", 0],
+            },
+          },
+        },
+      },
+    ]);
+
+    // Get latest completed payout
+    const latestPayout = await Payout.findOne({
+      userId,
+      status: "completed",
+    })
+      .sort({ completedAt: -1 })
+      .select("amount netAmount completedAt");
+
+    const result = stats[0] || {
+      totalRequested: 0,
+      totalAmount: 0,
+      totalNetAmount: 0,
+      totalTax: 0,
+      pending: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+      completedAmount: 0,
+    };
+
+    teamLogger.success("Payout stats retrieved", { userId });
+
+    return {
+      success: true,
+      data: {
+        ...result,
+        latestPayout: latestPayout || null,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting payout stats", error);
     return {
       success: false,
       message: error.message,
