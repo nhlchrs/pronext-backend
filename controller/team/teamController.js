@@ -132,6 +132,133 @@ export const setSponsor = async (userId, sponsorId) => {
 };
 
 /**
+ * Update upline leg totals (leftLegTotal/rightLegTotal) up the chain
+ */
+const updateUplineLegTotals = async (userId, legPosition) => {
+  try {
+    let currentMember = await TeamMember.findOne({ userId });
+    
+    while (currentMember && currentMember.sponsorId) {
+      const sponsor = await TeamMember.findOne({ userId: currentMember.sponsorId });
+      if (!sponsor) break;
+
+      // Update the appropriate leg total based on the position
+      if (currentMember.position === "left") {
+        sponsor.leftLegTotal = (sponsor.leftLegTotal || 0) + 1;
+      } else if (currentMember.position === "right") {
+        sponsor.rightLegTotal = (sponsor.rightLegTotal || 0) + 1;
+      }
+
+      await sponsor.save();
+      currentMember = sponsor;
+    }
+  } catch (error) {
+    teamLogger.error("Error updating upline leg totals", error);
+  }
+};
+
+/**
+ * Update upline totalDownline count up the chain
+ */
+const updateUplineTotalDownline = async (userId) => {
+  try {
+    let currentMember = await TeamMember.findOne({ userId });
+    
+    while (currentMember && currentMember.sponsorId) {
+      const sponsor = await TeamMember.findOne({ userId: currentMember.sponsorId });
+      if (!sponsor) break;
+
+      sponsor.totalDownline = (sponsor.totalDownline || 0) + 1;
+      await sponsor.save();
+      
+      currentMember = sponsor;
+    }
+  } catch (error) {
+    teamLogger.error("Error updating upline total downline", error);
+  }
+};
+
+/**
+ * Find Next Available Position for Spillover
+ * Uses BFS (Breadth-First Search) to find the first available spot in the binary tree
+ */
+const findNextAvailablePosition = async (startSponsor) => {
+  try {
+    const queue = [];
+    const visited = new Set();
+    
+    // Start BFS from the sponsor
+    queue.push(startSponsor);
+    visited.add(startSponsor.userId.toString());
+
+    while (queue.length > 0) {
+      const currentSponsor = queue.shift();
+
+      // Check if left leg has space
+      if (currentSponsor.leftLegCount < 2) {
+        teamLogger.info("Found available left position", {
+          sponsorId: currentSponsor.userId,
+          leftLegCount: currentSponsor.leftLegCount,
+        });
+        return {
+          actualSponsor: currentSponsor,
+          position: "left",
+        };
+      }
+
+      // Check if right leg has space
+      if (currentSponsor.rightLegCount < 2) {
+        teamLogger.info("Found available right position", {
+          sponsorId: currentSponsor.userId,
+          rightLegCount: currentSponsor.rightLegCount,
+        });
+        return {
+          actualSponsor: currentSponsor,
+          position: "right",
+        };
+      }
+
+      // Both legs are full, add children to queue for BFS
+      // Find left and right leg members
+      const leftLegMembers = await TeamMember.find({
+        sponsorId: currentSponsor.userId,
+        position: "left",
+      });
+
+      const rightLegMembers = await TeamMember.find({
+        sponsorId: currentSponsor.userId,
+        position: "right",
+      });
+
+      // Add left leg members to queue
+      for (const member of leftLegMembers) {
+        const memberId = member.userId.toString();
+        if (!visited.has(memberId)) {
+          queue.push(member);
+          visited.add(memberId);
+        }
+      }
+
+      // Add right leg members to queue
+      for (const member of rightLegMembers) {
+        const memberId = member.userId.toString();
+        if (!visited.has(memberId)) {
+          queue.push(member);
+          visited.add(memberId);
+        }
+      }
+    }
+
+    // No available position found
+    teamLogger.warn("No available position found in the network");
+    return null;
+  } catch (error) {
+    teamLogger.error("Error finding next available position", error);
+    return null;
+  }
+};
+
+/**
  * Validate Binary Referral Code and Check Availability
  * LPRO/RPRO codes can only be used if the respective leg is not full (<2 members)
  */
@@ -173,28 +300,43 @@ export const validateBinaryReferralCode = async (referralCode) => {
       };
     }
 
-    // Check if the leg is full
+    // Check if both legs are full (2:2 ratio achieved) - allow spillover
+    const bothLegsFull = sponsor.leftLegCount >= 2 && sponsor.rightLegCount >= 2;
+    
+    if (bothLegsFull) {
+      // When 2:2 is achieved, accept any code and trigger spillover
+      teamLogger.info("Both legs full (2:2) - spillover placement will be used", {
+        sponsorId: sponsor.userId,
+        leftLegCount: sponsor.leftLegCount,
+        rightLegCount: sponsor.rightLegCount,
+      });
+      
+      return {
+        success: true,
+        sponsor,
+        position: isLeftCode ? "left" : "right",
+        spilloverNeeded: true,
+        isAvailable: true,
+        currentCount: isLeftCode ? sponsor.leftLegCount : sponsor.rightLegCount,
+        message: "✨ Both legs are full! Your position will be placed in the next available spot in the network (spillover).",
+      };
+    }
+
+    // Check if the specific leg is full (but the other isn't)
     if (isLeftCode) {
-      if (sponsor.leftLegFull || sponsor.leftLegCount >= 2) {
-        teamLogger.warn("Left leg is full", {
+      if (sponsor.leftLegCount >= 2) {
+        // Left is full, but right isn't - suggest right code
+        teamLogger.warn("Left leg is full, but right leg is available", {
           sponsorId: sponsor.userId,
           leftLegCount: sponsor.leftLegCount,
+          rightLegCount: sponsor.rightLegCount,
         });
         return {
           success: false,
-          message: "This left position (LPRO) is full. Please use the right position code (RPRO) or contact your sponsor.",
+          message: "This left position (LPRO) is full. Please use the right position code (RPRO) instead.",
           legFull: true,
           position: "left",
           currentCount: sponsor.leftLegCount,
-        };
-      }
-
-      if (!sponsor.leftReferralActive) {
-        return {
-          success: false,
-          message: "This LPRO code has been disabled. Please use RPRO code.",
-          legFull: true,
-          position: "left",
         };
       }
 
@@ -208,26 +350,19 @@ export const validateBinaryReferralCode = async (referralCode) => {
     }
 
     if (isRightCode) {
-      if (sponsor.rightLegFull || sponsor.rightLegCount >= 2) {
-        teamLogger.warn("Right leg is full", {
+      if (sponsor.rightLegCount >= 2) {
+        // Right is full, but left isn't - suggest left code
+        teamLogger.warn("Right leg is full, but left leg is available", {
           sponsorId: sponsor.userId,
+          leftLegCount: sponsor.leftLegCount,
           rightLegCount: sponsor.rightLegCount,
         });
         return {
           success: false,
-          message: "This right position (RPRO) is full. Please use the left position code (LPRO) or contact your sponsor.",
+          message: "This right position (RPRO) is full. Please use the left position code (LPRO) instead.",
           legFull: true,
           position: "right",
           currentCount: sponsor.rightLegCount,
-        };
-      }
-
-      if (!sponsor.rightReferralActive) {
-        return {
-          success: false,
-          message: "This RPRO code has been disabled. Please use LPRO code.",
-          legFull: true,
-          position: "right",
         };
       }
 
@@ -282,8 +417,85 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
       return validation;
     }
 
-    const { sponsor, position } = validation;
+    const { sponsor, position, spilloverNeeded } = validation;
 
+    // Handle spillover placement (when 2:2 is reached)
+    if (spilloverNeeded) {
+      teamLogger.info("Spillover placement triggered", { 
+        userId, 
+        originalSponsorId: sponsor.userId 
+      });
+
+      // Find next available position in the downline
+      const nextAvailablePosition = await findNextAvailablePosition(sponsor);
+      
+      if (!nextAvailablePosition) {
+        return {
+          success: false,
+          message: "No available position found in the network. Please try again later.",
+        };
+      }
+
+      const { actualSponsor, position: actualPosition } = nextAvailablePosition;
+
+      // Set the actual sponsor (where they'll be placed in binary tree)
+      teamMember.sponsorId = actualSponsor.userId;
+      teamMember.position = actualPosition;
+      await teamMember.save();
+
+      // Update actual sponsor's binary leg
+      actualSponsor.teamMembers.push(userId);
+      actualSponsor.directCount = actualSponsor.teamMembers.length;
+
+      if (actualPosition === "left") {
+        actualSponsor.leftLegCount += 1;
+        if (actualSponsor.leftLegCount >= 2) {
+          actualSponsor.leftLegFull = true;
+        }
+      } else if (actualPosition === "right") {
+        actualSponsor.rightLegCount += 1;
+        if (actualSponsor.rightLegCount >= 2) {
+          actualSponsor.rightLegFull = true;
+        }
+      }
+
+      await actualSponsor.save();
+
+      // Update actual sponsor's level based on new directCount
+      await updateUserLevel(actualSponsor.userId);
+
+      // Update original sponsor's directCount (for referral commissions)
+      if (sponsor.userId.toString() !== actualSponsor.userId.toString()) {
+        sponsor.directCount += 1;
+        await sponsor.save();
+        
+        // Update original sponsor's level as well
+        await updateUserLevel(sponsor.userId);
+      }
+
+      // Update leg totals up the chain
+      await updateUplineLegTotals(actualSponsor.userId, actualPosition);
+      await updateUplineTotalDownline(actualSponsor.userId);
+
+      teamLogger.success("Spillover placement completed", {
+        userId,
+        originalSponsorId: sponsor.userId,
+        actualSponsorId: actualSponsor.userId,
+        position: actualPosition,
+      });
+
+      return {
+        success: true,
+        message: `✨ Placed in ${actualPosition} leg via spillover! You're now in ${actualSponsor.userId.fname || 'team member'}'s downline.`,
+        teamMember,
+        position: actualPosition,
+        spilloverPlacement: true,
+        actualSponsor: actualSponsor.userId,
+        originalSponsor: sponsor.userId,
+      };
+    }
+
+    // Normal placement (direct under sponsor)
     // Set sponsor and position
     teamMember.sponsorId = sponsor.userId;
     teamMember.position = position;
@@ -315,6 +527,9 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
     }
 
     await sponsor.save();
+
+    // Update sponsor's level based on new directCount
+    await updateUserLevel(sponsor.userId);
 
     teamLogger.success("Sponsor assigned with binary position", {
       userId,
@@ -698,13 +913,22 @@ export const updateUserLevel = async (userId) => {
     let newLevel = 0;
     const directCount = teamMember.directCount;
 
-    if (directCount >= 10 && !teamMember.levelQualified) {
+    // Determine level based on directCount thresholds
+    if (directCount >= 40) {
+      newLevel = 4;
+    } else if (directCount >= 30) {
+      newLevel = 3;
+    } else if (directCount >= 20) {
+      newLevel = 2;
+    } else if (directCount >= 10) {
       newLevel = 1;
+    }
+
+    // Set levelQualified flag and date when first reaching level 1
+    if (newLevel >= 1 && !teamMember.levelQualified) {
       teamMember.levelQualified = true;
       teamMember.levelQualifiedDate = new Date();
-    } else if (directCount >= 20) newLevel = 2;
-    else if (directCount >= 50) newLevel = 3;
-    else if (directCount >= 100) newLevel = 4;
+    }
 
     teamMember.level = newLevel;
     await teamMember.save();
