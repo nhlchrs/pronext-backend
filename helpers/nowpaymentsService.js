@@ -315,7 +315,9 @@ class NOWPaymentsService {
       
       // Create hash from data
       const crypto = require("crypto");
-      const dataString = JSON.stringify(data);
+      // If data is already a string (raw body), use it directly
+      // Otherwise, stringify it (for backward compatibility)
+      const dataString = typeof data === 'string' ? data : JSON.stringify(data);
       const hash = crypto
         .createHmac("sha512", this.ipnSecret)
         .update(dataString)
@@ -326,7 +328,10 @@ class NOWPaymentsService {
       if (isValid) {
         nowLogger.success("IPN signature verified");
       } else {
-        nowLogger.warn("IPN signature verification failed");
+        nowLogger.warn("IPN signature verification failed", {
+          expectedHash: hash.substring(0, 20) + "...",
+          receivedSignature: signature.substring(0, 20) + "...",
+        });
       }
       
       return isValid;
@@ -381,6 +386,82 @@ class NOWPaymentsService {
       return response.data;
     } catch (error) {
       nowLogger.error("Error fetching exchange rate", error.message);
+      throw error;
+    }
+  }
+
+  /**
+   * Create a payout (withdrawal) to user's crypto wallet
+   * POST /v1/payout
+   * @param {object} payoutData - Payout details
+   * @returns {Promise<object>} - Payout response with id and status
+   */
+  async createPayout(payoutData) {
+    try {
+      const { address, currency, amount, ipn_callback_url } = payoutData;
+      
+      nowLogger.debug("Creating payout", { address: address?.substring(0, 10) + '...', currency, amount });
+      
+      const response = await axios.post(
+        `${this.baseUrl}/payout`,
+        {
+          withdrawals: [{
+            address,
+            currency,
+            amount,
+            ipn_callback_url
+          }]
+        },
+        {
+          headers: {
+            "x-api-key": this.apiKey,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      nowLogger.success("Payout created successfully", { 
+        payoutId: response.data.id,
+        batchWithdrawalId: response.data.withdrawals?.[0]?.batch_withdrawal_id
+      });
+      
+      return response.data;
+    } catch (error) {
+      nowLogger.error("Error creating payout", {
+        message: error.message,
+        response: error.response?.data
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get payout status
+   * GET /v1/payout/:id
+   * @param {string} payoutId - Payout ID
+   * @returns {Promise<object>} - Payout status details
+   */
+  async getPayoutStatus(payoutId) {
+    try {
+      nowLogger.debug("Fetching payout status", { payoutId });
+      
+      const response = await axios.get(
+        `${this.baseUrl}/payout/${payoutId}`,
+        {
+          headers: {
+            "x-api-key": this.apiKey,
+          },
+        }
+      );
+
+      nowLogger.success("Payout status fetched", { 
+        payoutId,
+        status: response.data.status 
+      });
+      
+      return response.data;
+    } catch (error) {
+      nowLogger.error("Error fetching payout status", error.message);
       throw error;
     }
   }

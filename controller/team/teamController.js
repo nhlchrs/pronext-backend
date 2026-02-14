@@ -131,6 +131,218 @@ export const setSponsor = async (userId, sponsorId) => {
   }
 };
 
+/**
+ * Validate Binary Referral Code and Check Availability
+ * LPRO/RPRO codes can only be used if the respective leg is not full (<2 members)
+ */
+export const validateBinaryReferralCode = async (referralCode) => {
+  try {
+    teamLogger.start("Validating binary referral code", { referralCode });
+
+    // Check if it's LPRO or RPRO
+    if (!referralCode.startsWith("LPRO-") && !referralCode.startsWith("RPRO-")) {
+      // Regular PRO code - no binary restriction
+      const sponsor = await TeamMember.findOne({ referralCode });
+      if (!sponsor) {
+        return {
+          success: false,
+          message: "Invalid referral code",
+        };
+      }
+      return {
+        success: true,
+        sponsor,
+        position: "main",
+        isAvailable: true,
+      };
+    }
+
+    // Binary code validation
+    const isLeftCode = referralCode.startsWith("LPRO-");
+    const isRightCode = referralCode.startsWith("RPRO-");
+
+    const sponsor = await TeamMember.findOne({
+      $or: [{ leftReferralCode: referralCode }, { rightReferralCode: referralCode }],
+    });
+
+    if (!sponsor) {
+      teamLogger.warn("Sponsor not found for binary referral code", { referralCode });
+      return {
+        success: false,
+        message: "Invalid referral code",
+      };
+    }
+
+    // Check if the leg is full
+    if (isLeftCode) {
+      if (sponsor.leftLegFull || sponsor.leftLegCount >= 2) {
+        teamLogger.warn("Left leg is full", {
+          sponsorId: sponsor.userId,
+          leftLegCount: sponsor.leftLegCount,
+        });
+        return {
+          success: false,
+          message: "This left position (LPRO) is full. Please use the right position code (RPRO) or contact your sponsor.",
+          legFull: true,
+          position: "left",
+          currentCount: sponsor.leftLegCount,
+        };
+      }
+
+      if (!sponsor.leftReferralActive) {
+        return {
+          success: false,
+          message: "This LPRO code has been disabled. Please use RPRO code.",
+          legFull: true,
+          position: "left",
+        };
+      }
+
+      return {
+        success: true,
+        sponsor,
+        position: "left",
+        isAvailable: true,
+        currentCount: sponsor.leftLegCount,
+      };
+    }
+
+    if (isRightCode) {
+      if (sponsor.rightLegFull || sponsor.rightLegCount >= 2) {
+        teamLogger.warn("Right leg is full", {
+          sponsorId: sponsor.userId,
+          rightLegCount: sponsor.rightLegCount,
+        });
+        return {
+          success: false,
+          message: "This right position (RPRO) is full. Please use the left position code (LPRO) or contact your sponsor.",
+          legFull: true,
+          position: "right",
+          currentCount: sponsor.rightLegCount,
+        };
+      }
+
+      if (!sponsor.rightReferralActive) {
+        return {
+          success: false,
+          message: "This RPRO code has been disabled. Please use LPRO code.",
+          legFull: true,
+          position: "right",
+        };
+      }
+
+      return {
+        success: true,
+        sponsor,
+        position: "right",
+        isAvailable: true,
+        currentCount: sponsor.rightLegCount,
+      };
+    }
+
+    return {
+      success: false,
+      message: "Invalid referral code format",
+    };
+  } catch (error) {
+    teamLogger.error("Error validating binary referral code", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Set Sponsor with Binary Position
+ * Enhanced version that handles LPRO/RPRO placement
+ */
+export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
+  try {
+    teamLogger.start("Setting sponsor with binary position", { userId, referralCode });
+
+    const teamMember = await TeamMember.findOne({ userId });
+    if (!teamMember) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    if (teamMember.sponsorId) {
+      return {
+        success: false,
+        message: "Sponsor already assigned",
+      };
+    }
+
+    // Validate referral code and check availability
+    const validation = await validateBinaryReferralCode(referralCode);
+    if (!validation.success) {
+      return validation;
+    }
+
+    const { sponsor, position } = validation;
+
+    // Set sponsor and position
+    teamMember.sponsorId = sponsor.userId;
+    teamMember.position = position;
+    await teamMember.save();
+
+    // Update sponsor's team
+    sponsor.teamMembers.push(userId);
+    sponsor.directCount = sponsor.teamMembers.length;
+
+    // Update binary leg counts
+    if (position === "left") {
+      sponsor.leftLegCount += 1;
+      if (sponsor.leftLegCount >= 2) {
+        sponsor.leftLegFull = true;
+        sponsor.leftReferralActive = false;
+        teamLogger.info("Left leg is now full - LPRO code disabled", {
+          sponsorId: sponsor.userId,
+        });
+      }
+    } else if (position === "right") {
+      sponsor.rightLegCount += 1;
+      if (sponsor.rightLegCount >= 2) {
+        sponsor.rightLegFull = true;
+        sponsor.rightReferralActive = false;
+        teamLogger.info("Right leg is now full - RPRO code disabled", {
+          sponsorId: sponsor.userId,
+        });
+      }
+    }
+
+    await sponsor.save();
+
+    teamLogger.success("Sponsor assigned with binary position", {
+      userId,
+      sponsorId: sponsor.userId,
+      position,
+      leftLegCount: sponsor.leftLegCount,
+      rightLegCount: sponsor.rightLegCount,
+    });
+
+    return {
+      success: true,
+      message: "Sponsor assigned successfully",
+      teamMember,
+      position,
+      sponsorLeftLegCount: sponsor.leftLegCount,
+      sponsorRightLegCount: sponsor.rightLegCount,
+      sponsorLeftLegFull: sponsor.leftLegFull,
+      sponsorRightLegFull: sponsor.rightLegFull,
+    };
+  } catch (error) {
+    teamLogger.error("Error setting sponsor with binary position", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
 // Get Team Dashboard
 export const getTeamDashboard = async (userId) => {
   try {
@@ -155,6 +367,8 @@ export const getTeamDashboard = async (userId) => {
       success: true,
       dashboard: {
         referralCode: teamMember.referralCode,
+        leftReferralCode: teamMember.leftReferralCode,
+        rightReferralCode: teamMember.rightReferralCode,
         sponsor: teamMember.sponsorId,
         directCount,
         teamMembers: teamMember.teamMembers,
@@ -162,6 +376,19 @@ export const getTeamDashboard = async (userId) => {
         levelQualified,
         levelQualifiedDate: teamMember.levelQualifiedDate,
         totalDownline: teamMember.totalDownline,
+        // Binary Tree Information
+        binaryTree: {
+          leftLegCount: teamMember.leftLegCount,
+          rightLegCount: teamMember.rightLegCount,
+          leftLegPV: teamMember.leftLegPV,
+          rightLegPV: teamMember.rightLegPV,
+          leftLegFull: teamMember.leftLegFull,
+          rightLegFull: teamMember.rightLegFull,
+          leftReferralActive: teamMember.leftReferralActive,
+          rightReferralActive: teamMember.rightReferralActive,
+          lproAvailable: !teamMember.leftLegFull && teamMember.leftReferralActive,
+          rproAvailable: !teamMember.rightLegFull && teamMember.rightReferralActive,
+        },
         bonusBreakdown,
         nextMilestone,
         earnings: {
@@ -1812,6 +2039,19 @@ export const getReferralStats = async (userId) => {
       leftTeamCount: leftTeamMembers,
       rightTeamCount: rightTeamMembers,
       mainTeamCount: mainTeamMembers,
+      // Binary tree status
+      binaryTree: {
+        leftLegCount: member.leftLegCount || 0,
+        rightLegCount: member.rightLegCount || 0,
+        leftLegFull: member.leftLegFull || false,
+        rightLegFull: member.rightLegFull || false,
+        leftReferralActive: member.leftReferralActive !== false,
+        rightReferralActive: member.rightReferralActive !== false,
+        lproAvailable: !member.leftLegFull && member.leftReferralActive !== false,
+        rproAvailable: !member.rightLegFull && member.rightReferralActive !== false,
+        leftLegPV: member.leftLegPV || 0,
+        rightLegPV: member.rightLegPV || 0,
+      },
     };
 
     teamLogger.success("Referral stats retrieved", stats);

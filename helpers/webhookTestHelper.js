@@ -7,6 +7,10 @@
 
 import axios from "axios";
 import crypto from "crypto";
+import dotenv from "dotenv";
+
+// Load environment variables
+dotenv.config();
 
 // Configuration
 const SERVER_URL = process.env.SERVER_URL || "http://localhost:5000";

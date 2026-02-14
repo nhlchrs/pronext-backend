@@ -23,6 +23,8 @@ import { getDownlineStructure } from "./teamController.js";
 import Payout from "../../models/payoutModel.js";
 import User from "../../models/authModel.js";
 import logger from "../../helpers/logger.js";
+import nowpaymentsService from "../../helpers/nowpaymentsService.js";
+import { sendPayoutCompletionEmail } from "../../services/emailService.js";
 
 const adminPayoutLogger = logger.module("ADMIN_PAYOUT");
 
@@ -388,6 +390,194 @@ router.get("/admin/payouts/stats/summary", requireSignin, isAdmin, async (req, r
     return res.status(500).json({
       success: false,
       message: "Error fetching payout statistics",
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Process a payout - Send crypto to user's wallet via NOWPayments
+ * POST /api/admin/payouts/:payoutId/process
+ */
+router.post("/admin/payouts/:payoutId/process", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { payoutId } = req.params;
+    adminPayoutLogger.start(`Processing payout: ${payoutId}`);
+
+    // Get payout details
+    const payout = await Payout.findById(payoutId).populate("userId", "fname lname email");
+    
+    if (!payout) {
+      adminPayoutLogger.error("Payout not found", { payoutId });
+      return res.status(404).json({
+        success: false,
+        message: "Payout not found"
+      });
+    }
+
+    // Check if already processed
+    if (payout.status === "completed" || payout.status === "processing") {
+      adminPayoutLogger.warn("Payout already processed or in progress", { payoutId, status: payout.status });
+      return res.status(400).json({
+        success: false,
+        message: `Payout is already ${payout.status}`
+      });
+    }
+
+    // Validate crypto details
+    if (payout.paymentMethod !== "crypto" || !payout.cryptoWalletAddress || !payout.cryptoCurrency) {
+      adminPayoutLogger.error("Invalid payout method for processing", { 
+        method: payout.paymentMethod,
+        hasCryptoAddress: !!payout.cryptoWalletAddress
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Can only process crypto payouts with valid wallet address"
+      });
+    }
+
+    // Update status to processing
+    payout.status = "processing";
+    await payout.save();
+    adminPayoutLogger.info("Payout status updated to processing", { payoutId });
+
+    try {
+      // Create payout via NOWPayments
+      const ipnCallbackUrl = `${process.env.BACKEND_URL}/api/webhooks/nowpayments/payout`;
+      
+      const payoutResponse = await nowpaymentsService.createPayout({
+        address: payout.cryptoWalletAddress,
+        currency: payout.cryptoCurrency.toLowerCase(), // btc or usdt
+        amount: payout.netAmount,
+        ipn_callback_url: ipnCallbackUrl
+      });
+
+      adminPayoutLogger.success("NOWPayments payout created", { 
+        payoutId,
+        nowpaymentsId: payoutResponse.id,
+        withdrawalId: payoutResponse.withdrawals?.[0]?.batch_withdrawal_id
+      });
+
+      // Update payout with transaction details
+      payout.status = "completed";
+      payout.transactionId = payoutResponse.id;
+      payout.cryptoTransactionHash = payoutResponse.withdrawals?.[0]?.hash || "";
+      payout.completedAt = new Date();
+      payout.adminNotes = `Processed via NOWPayments. Withdrawal ID: ${payoutResponse.withdrawals?.[0]?.batch_withdrawal_id || "N/A"}`;
+      
+      await payout.save();
+      adminPayoutLogger.success("Payout completed", { payoutId });
+
+      // Send email notification to user
+      if (payout.userId?.email) {
+        const userName = `${payout.userId.fname} ${payout.userId.lname}`;
+        await sendPayoutCompletionEmail(payout.userId.email, {
+          amount: payout.amount,
+          netAmount: payout.netAmount,
+          currency: "INR",
+          method: `${payout.cryptoCurrency} Wallet`,
+          transactionId: payout.transactionId,
+          cryptoTransactionHash: payout.cryptoTransactionHash
+        });
+        adminPayoutLogger.info("Payout completion email sent", { 
+          email: payout.userId.email,
+          payoutId 
+        });
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "Payout processed successfully",
+        data: {
+          payout,
+          nowpaymentsResponse: payoutResponse
+        }
+      });
+
+    } catch (payoutError) {
+      // Revert to failed status if NOWPayments fails
+      payout.status = "failed";
+      payout.adminNotes = `Processing failed: ${payoutError.message}`;
+      await payout.save();
+      
+      adminPayoutLogger.error("Payout processing failed", { 
+        payoutId,
+        error: payoutError.message 
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: "Payout processing failed",
+        error: payoutError.message
+      });
+    }
+
+  } catch (error) {
+    adminPayoutLogger.error("Error processing payout", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error processing payout",
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Export payouts as CSV
+ * GET /api/admin/payouts/export/csv
+ */
+router.get("/admin/payouts/export/csv", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { status, paymentMethod, startDate, endDate } = req.query;
+    adminPayoutLogger.start("Exporting payouts to CSV");
+
+    // Build query
+    const query = {};
+    if (status) query.status = status;
+    if (paymentMethod) query.paymentMethod = paymentMethod;
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) query.createdAt.$gte = new Date(startDate);
+      if (endDate) query.createdAt.$lte = new Date(endDate);
+    }
+
+    // Fetch payouts with user details
+    const payouts = await Payout.find(query)
+      .populate("userId", "fname lname email Phone cryptoWalletAddress cryptoCurrency")
+      .sort({ createdAt: -1 });
+
+    // Build CSV content
+    const csvHeader = "ID,User Name,Email,Phone,Amount,Tax,Net Amount,Currency,Payment Method,Crypto Address,Status,Transaction ID,Crypto Hash,Requested Date,Completed Date,Admin Notes\\n";
+    
+    const csvRows = payouts.map(payout => {
+      const userName = `${payout.userId?.fname || ""} ${payout.userId?.lname || ""}`.trim();
+      const email = payout.userId?.email || "";
+      const phone = payout.userId?.Phone || "";
+      const cryptoAddress = payout.cryptoWalletAddress || "";
+      const transactionId = payout.transactionId || "";
+      const cryptoHash = payout.cryptoTransactionHash || "";
+      const requestedDate = payout.createdAt?.toISOString().split('T')[0] || "";
+      const completedDate = payout.completedAt?.toISOString().split('T')[0] || "";
+      const adminNotes = (payout.adminNotes || "").replace(/,/g, ";").replace(/\\n/g, " ");
+
+      return `${payout._id},"${userName}","${email}","${phone}",${payout.amount},${payout.taxAmount},${payout.netAmount},"${payout.cryptoCurrency || "INR"}","${payout.paymentMethod}","${cryptoAddress}","${payout.status}","${transactionId}","${cryptoHash}","${requestedDate}","${completedDate}","${adminNotes}"`;
+    }).join("\\n");
+
+    const csvContent = csvHeader + csvRows;
+
+    adminPayoutLogger.success("CSV export generated", { totalRecords: payouts.length });
+
+    // Set headers for file download
+    res.setHeader("Content-Type", "text/csv");
+    res.setHeader("Content-Disposition", `attachment; filename="payouts_export_${Date.now()}.csv"`);
+    
+    return res.status(200).send(csvContent);
+
+  } catch (error) {
+    adminPayoutLogger.error("Error exporting CSV", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error exporting CSV",
       error: error.message
     });
   }

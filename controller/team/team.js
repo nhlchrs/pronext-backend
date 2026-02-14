@@ -3,6 +3,8 @@ import { requireSignin } from "../../middleware/authMiddleware.js";
 import {
   getOrCreateTeamMember,
   setSponsor,
+  setSponsorWithBinaryPosition,
+  validateBinaryReferralCode,
   getTeamDashboard,
   getTeamMembers,
   getReferralHistory,
@@ -78,9 +80,18 @@ router.get("/team/my-referral-code", requireSignin, async (req, res) => {
 });
 
 // Validate referral code (public - no auth required)
+// Now supports binary LPRO/RPRO validation
 router.post("/team/validate-referral-code", async (req, res) => {
   try {
     const { code } = req.body;
+    
+    // Use binary validation if code is LPRO/RPRO
+    if (code.startsWith("LPRO-") || code.startsWith("RPRO-")) {
+      const result = await validateBinaryReferralCode(code);
+      return res.status(result.success ? 200 : 400).json(result);
+    }
+    
+    // Regular PRO code validation
     const result = await validateReferralCode(code);
     return res.status(result.success ? 200 : 404).json(result);
   } catch (error) {
@@ -89,9 +100,18 @@ router.post("/team/validate-referral-code", async (req, res) => {
 });
 
 // Apply referral code - User joins team using referral code
+// Now supports binary positioning with LPRO/RPRO
 router.post("/team/apply-referral-code", requireSignin, async (req, res) => {
   try {
     const { code } = req.body;
+    
+    // Use binary positioning if code is LPRO/RPRO
+    if (code.startsWith("LPRO-") || code.startsWith("RPRO-")) {
+      const result = await setSponsorWithBinaryPosition(req.user._id, code);
+      return res.status(result.success ? 201 : 400).json(result);
+    }
+    
+    // Regular referral code application
     const result = await applyReferralCode(req.user._id, code);
     return res.status(result.success ? 201 : 400).json(result);
   } catch (error) {

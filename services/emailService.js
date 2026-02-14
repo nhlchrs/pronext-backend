@@ -335,8 +335,128 @@ export const sendPasswordResetConfirmation = async (email) => {
   }
 };
 
+/**
+ * Send Payout Completion Email
+ * @param {string} email - Recipient email address
+ * @param {object} payoutDetails - Payout information
+ * @returns {Promise<boolean>} - Success status
+ */
+export const sendPayoutCompletionEmail = async (email, payoutDetails) => {
+  initializeSendGrid();
+  
+  if (!email || !process.env.SENDGRID_API_KEY) {
+    emailLogger.warn('Cannot send payout email: Missing email or API key');
+    return false;
+  }
+
+  const { FROM_EMAIL, FROM_NAME } = getConfig();
+  const { amount, netAmount, currency, method, transactionId, cryptoTransactionHash } = payoutDetails;
+
+  try {
+    const msg = {
+      to: email,
+      from: {
+        email: FROM_EMAIL,
+        name: FROM_NAME
+      },
+      subject: 'ProNet - Payout Completed Successfully! 💰',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; background: #f4f4f4; margin: 0; padding: 0; }
+            .container { max-width: 600px; margin: 20px auto; padding: 0; background: #ffffff; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+            .header { background: linear-gradient(135deg, #4CD3C8 0%, #0B1929 100%); color: white; padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0; }
+            .header h1 { margin: 0; font-size: 28px; }
+            .content { padding: 30px 20px; }
+            .highlight-box { background: #f8f9fa; border-left: 4px solid #4CD3C8; padding: 20px; margin: 20px 0; border-radius: 5px; }
+            .amount { font-size: 36px; font-weight: bold; color: #4CD3C8; margin: 10px 0; }
+            .details { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 20px 0; }
+            .details-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #e0e0e0; }
+            .details-row:last-child { border-bottom: none; }
+            .label { font-weight: 600; color: #666; }
+            .value { color: #333; }
+            .success-icon { font-size: 48px; text-align: center; margin: 20px 0; }
+            .footer { background: #f8f9fa; padding: 20px; text-align: center; font-size: 12px; color: #888; border-radius: 0 0 10px 10px; border-top: 1px solid #e0e0e0; }
+            .warning { background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin: 20px 0; font-size: 14px; color: #856404; }
+            a { color: #4CD3C8; text-decoration: none; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>💰 Payout Completed!</h1>
+            </div>
+            <div class="content">
+              <div class="success-icon">✅</div>
+              <p style="text-align: center; font-size: 18px;">Your payout has been processed successfully!</p>
+              
+              <div class="highlight-box">
+                <p style="margin: 0; font-size: 14px; color: #666;">Amount Received</p>
+                <div class="amount">₹${netAmount?.toFixed(2) || amount?.toFixed(2)}</div>
+                <p style="margin: 0; font-size: 12px; color: #888;">${currency || 'INR'} • ${method || 'Crypto'} Transfer</p>
+              </div>
+
+              <div class="details">
+                <h3 style="margin-top: 0; color: #0B1929;">Transaction Details</h3>
+                <div class="details-row">
+                  <span class="label">Payment Method:</span>
+                  <span class="value">${method || 'Crypto Wallet'}</span>
+                </div>
+                ${transactionId ? `
+                <div class="details-row">
+                  <span class="label">Transaction ID:</span>
+                  <span class="value" style="font-family: monospace; font-size: 11px;">${transactionId}</span>
+                </div>
+                ` : ''}
+                ${cryptoTransactionHash ? `
+                <div class="details-row">
+                  <span class="label">Blockchain Hash:</span>
+                  <span class="value" style="font-family: monospace; font-size: 11px;">${cryptoTransactionHash}</span>
+                </div>
+                ` : ''}
+                <div class="details-row">
+                  <span class="label">Status:</span>
+                  <span class="value" style="color: #28a745; font-weight: 600;">✓ Completed</span>
+                </div>
+              </div>
+
+              <div class="warning">
+                ⚠️ <strong>Security Note:</strong> This payout has been sent to your registered wallet address. 
+                Please verify the transaction in your wallet. If you did not request this payout, contact support immediately.
+              </div>
+
+              <p>The funds should appear in your wallet shortly. Cryptocurrency transactions typically take 10-30 minutes for network confirmation.</p>
+              
+              <p>If you have any questions or concerns, please don't hesitate to contact our support team.</p>
+              
+              <p>Best regards,<br><strong>The ProNet Team</strong></p>
+            </div>
+            <div class="footer">
+              <p>&copy; ${new Date().getFullYear()} ProNet Platform. All rights reserved.</p>
+              <p>This is an automated email. Please do not reply to this message.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `
+    };
+
+    await sgMail.send(msg);
+    emailLogger.success(`Payout completion email sent to: ${email}`);
+    return true;
+
+  } catch (error) {
+    emailLogger.error('Error sending payout completion email', { email, error: error.message });
+    return false;
+  }
+};
+
 export default {
   sendOtpEmail,
   sendWelcomeEmail,
-  sendPasswordResetConfirmation
+  sendPasswordResetConfirmation,
+  sendPayoutCompletionEmail
 };

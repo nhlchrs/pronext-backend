@@ -51,6 +51,45 @@ const TeamMemberSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    // Binary Tree Tracking
+    leftLegCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 2, // Binary = max 2 direct under each leg
+    },
+    rightLegCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 2, // Binary = max 2 direct under each leg
+    },
+    leftLegPV: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    rightLegPV: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    leftLegFull: {
+      type: Boolean,
+      default: false,
+    },
+    rightLegFull: {
+      type: Boolean,
+      default: false,
+    },
+    leftReferralActive: {
+      type: Boolean,
+      default: true, // LPRO code active
+    },
+    rightReferralActive: {
+      type: Boolean,
+      default: true, // RPRO code active
+    },
     totalDownline: {
       type: Number,
       default: 0,

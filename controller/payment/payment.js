@@ -24,6 +24,15 @@ import { authMiddleware, isAdmin } from "../../middleware/authMiddleware.js";
 const router = express.Router();
 
 /**
+ * Middleware to capture raw body for webhook signature verification
+ */
+const captureRawBody = express.json({
+  verify: (req, res, buf, encoding) => {
+    req.rawBody = buf.toString(encoding || 'utf8');
+  }
+});
+
+/**
  * Public Routes (No Authentication Required)
  */
 
@@ -40,7 +49,8 @@ router.get("/minimum-amount", getMinimumAmount);
 router.get("/exchange-rate", getExchangeRate);
 
 // NOWPayments IPN Webhook (unauthenticated, but signature verified)
-router.post("/webhook", handleIPNCallback);
+// Use captureRawBody middleware to get the raw body for signature verification
+router.post("/webhook", captureRawBody, handleIPNCallback);
 
 /**
  * Protected Routes (Authentication Required)

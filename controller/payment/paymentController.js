@@ -400,10 +400,13 @@ export const handleIPNCallback = async (req, res) => {
     });
 
     // 🔐 Verify signature first (security check)
-    if (!signature || !nowpaymentsService.verifyIPNSignature(req.body, signature)) {
+    // Use raw body if available, otherwise use parsed body
+    const dataForSignature = req.rawBody || req.body;
+    if (!signature || !nowpaymentsService.verifyIPNSignature(dataForSignature, signature)) {
       paymentLogger.warn("❌ Invalid IPN signature - rejecting webhook", {
         orderId: order_id,
         paymentId: payment_id,
+        hasRawBody: !!req.rawBody,
       });
       return ErrorResponse(res, "Invalid signature", 401);
     }
@@ -442,14 +445,31 @@ export const handleIPNCallback = async (req, res) => {
     if (payment_status === "finished") {
       // Determine subscription tier based on amount paid
       let subscriptionTier = "Basic";
+      let durationDays = 360; // Default 1 year
       const amount = price_amount || paymentRecord.priceAmount;
 
-      if (amount >= 30) {
+      if (amount >= 100) {
+        subscriptionTier = "Enterprise";
+        durationDays = 720; // 2 years
+      } else if (amount >= 30) {
         subscriptionTier = "Pro";
+        durationDays = 360; // 1 year
+      } else if (amount >= 20) {
+        subscriptionTier = "Test";
+        durationDays = 7; // 7 days for testing
       } else if (amount >= 15) {
         subscriptionTier = "Premium";
-      } else if (amount >= 5) {
+        durationDays = 180; // 6 months
+      } else if (amount >= 10) {
         subscriptionTier = "Basic";
+        durationDays = 30; // 1 month
+      } else {
+        // Less than $10 - don't activate subscription
+        paymentLogger.warn("Payment amount too low for subscription", {
+          amount,
+          orderId: order_id,
+        });
+        return successResponse(res, "Payment recorded but amount insufficient for subscription");
       }
 
       // Update user subscription
@@ -458,7 +478,7 @@ export const handleIPNCallback = async (req, res) => {
         {
           subscriptionStatus: true,
           subscriptionTier: subscriptionTier,
-          subscriptionExpiryDate: new Date(Date.now() + 360 * 24 * 60 * 60 * 1000), // 360 days (1 year)
+          subscriptionExpiryDate: new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000),
           lastPaymentDate: new Date(),
           subscriptionActivatedDate: new Date(),
         },
@@ -471,6 +491,7 @@ export const handleIPNCallback = async (req, res) => {
         orderId: order_id,
         paymentId: payment_id,
         tier: subscriptionTier,
+        durationDays: durationDays,
         amount: amount,
         currency: pay_currency,
         expiryDate: updatedUser?.subscriptionExpiryDate,
@@ -681,6 +702,7 @@ export const createSubscriptionPayment = async (req, res) => {
     
     // Map plan types to amounts if not provided
     const planPrices = {
+      "test": 20,
       "monthly": 29.99,
       "quarterly": 79.99,
       "yearly": 299.99,
@@ -691,6 +713,7 @@ export const createSubscriptionPayment = async (req, res) => {
     };
     
     const planDescription = {
+      "test": "Test Plan - 7 Days",
       "monthly": "Monthly Subscription - 30 Days",
       "quarterly": "Quarterly Subscription - 90 Days",
       "yearly": "Yearly Subscription - 365 Days",
@@ -725,26 +748,16 @@ export const createSubscriptionPayment = async (req, res) => {
 
     const order_id = `subscription_${userId}_${planType}_${Date.now()}`;
 
-    // Normalize currency to lowercase
+    // Normalize currency to lowercase and convert generic 'usdt' to network-specific
     payCurrency = payCurrency.toLowerCase();
     
-    // List of currencies that have been reported as unavailable
-    const unavailableCurrencies = ["usdt", "usdt_trc20", "usdt_erc20"];
-    
-    // Fallback currency mapping
-    const currencyFallback = {
-      "usdt": "btc",
-      "usdt_trc20": "eth",
-      "usdt_erc20": "eth",
-    };
-    
-    // Check if currency is unavailable and use fallback
-    if (unavailableCurrencies.includes(payCurrency)) {
-      paymentLogger.warn("Currency unavailable, using fallback", {
-        requested: payCurrency,
-        fallback: currencyFallback[payCurrency] || "btc"
+    // Convert generic 'usdt' to BSC network variant
+    if (payCurrency === 'usdt') {
+      payCurrency = 'usdtbsc';
+      paymentLogger.info("Converting generic USDT to USDTBSC for compatibility", {
+        original: 'usdt',
+        converted: 'usdtbsc'
       });
-      payCurrency = currencyFallback[payCurrency] || "btc";
     }
 
     const paymentData = {
@@ -757,19 +770,26 @@ export const createSubscriptionPayment = async (req, res) => {
       customer_email: userEmail,
     };
 
-    // Create invoice on NOWPayments with fallback handling
+    // Create invoice on NOWPayments
     let invoice;
     try {
       invoice = await nowpaymentsService.createPaymentInvoice(paymentData);
+      
+      paymentLogger.success("Invoice created successfully", {
+        invoiceId: invoice.id,
+        orderId: order_id,
+        amount: finalAmount,
+        currency: payCurrency.toUpperCase(),
+      });
     } catch (apiError) {
-      // If payment creation fails with currency error, try with BTC fallback
-      if (payCurrency !== "BTC") {
-        paymentLogger.warn("Payment creation failed, trying with BTC fallback", { error: apiError.response?.data });
-        paymentData.pay_currency = "BTC";
-        invoice = await nowpaymentsService.createPaymentInvoice(paymentData);
-      } else {
-        throw apiError;
-      }
+      paymentLogger.error("Failed to create payment invoice", {
+        error: apiError.response?.data || apiError.message,
+        amount: finalAmount,
+        currency: payCurrency,
+      });
+      
+      // Don't fallback to BTC - just throw the error so user can see what went wrong
+      throw apiError;
     }
 
     // Save subscription payment record
