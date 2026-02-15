@@ -57,8 +57,22 @@ export const getOrCreateTeamMember = async (userId) => {
         leftReferralCode,
         rightReferralCode,
       });
-      await teamMember.save();
-      teamLogger.success("New team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
+      
+      try {
+        await teamMember.save();
+        teamLogger.success("New team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
+      } catch (saveError) {
+        // Handle duplicate key error (race condition)
+        if (saveError.code === 11000) {
+          teamLogger.debug("Team member already exists (race condition), fetching existing", { userId });
+          teamMember = await TeamMember.findOne({ userId }).populate("sponsorId");
+          if (!teamMember) {
+            throw new Error("Failed to create or find team member");
+          }
+        } else {
+          throw saveError;
+        }
+      }
     } else {
       teamLogger.debug("Team member found", { userId });
     }
@@ -429,10 +443,12 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
     teamMember.position = position;
     await teamMember.save();
 
-    // Update sponsor's team
-    sponsor.teamMembers.push(userId);
-    // Increment directCount because user used sponsor's referral code directly
-    sponsor.directCount += 1;
+    // Update sponsor's team (prevent duplicates)
+    if (!sponsor.teamMembers.some(id => id.toString() === userId.toString())) {
+      sponsor.teamMembers.push(userId);
+      // Increment directCount because user used sponsor's referral code directly
+      sponsor.directCount += 1;
+    }
 
     // Update binary leg counts (NO LIMIT - track count but don't mark as full)
     if (position === "left") {
@@ -1008,9 +1024,26 @@ export const initMembership = async (userId) => {
       isActive: true,
     });
 
-    await teamMember.save();
-
-    teamLogger.success("Team membership created", { userId, referralCode, leftReferralCode, rightReferralCode });
+    try {
+      await teamMember.save();
+      teamLogger.success("Team membership created", { userId, referralCode, leftReferralCode, rightReferralCode });
+    } catch (saveError) {
+      // Handle duplicate key error (race condition)
+      if (saveError.code === 11000) {
+        teamLogger.debug("Team member already exists (race condition), fetching existing", { userId });
+        teamMember = await TeamMember.findOne({ userId });
+        if (!teamMember) {
+          throw new Error("Failed to create or find team member");
+        }
+        return {
+          success: true,
+          message: "User is already a team member",
+          data: teamMember,
+        };
+      } else {
+        throw saveError;
+      }
+    }
 
     return {
       success: true,
@@ -1213,16 +1246,30 @@ export const createTeamMember = async (userId, sponsorId, packagePrice) => {
       }
 
       newMember.sponsorId = sponsor._id;
-      sponsor.teamMembers.push(userId);
-      sponsor.directCount = sponsor.teamMembers.length;
+      // Prevent duplicates in teamMembers array
+      if (!sponsor.teamMembers.some(id => id.toString() === userId.toString())) {
+        sponsor.teamMembers.push(userId);
+        sponsor.directCount = sponsor.teamMembers.length;
+      }
       await sponsor.save();
 
       teamLogger.success("Sponsor assigned", { userId, sponsorId });
     }
 
-    await newMember.save();
-
-    teamLogger.success("Team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
+    try {
+      await newMember.save();
+      teamLogger.success("Team member created", { userId, referralCode, leftReferralCode, rightReferralCode });
+    } catch (saveError) {
+      // Handle duplicate key error
+      if (saveError.code === 11000) {
+        teamLogger.debug("Team member already exists (duplicate)", { userId });
+        return {
+          success: false,
+          message: "Team member already exists",
+        };
+      }
+      throw saveError;
+    }
 
     return {
       success: true,
@@ -1636,8 +1683,8 @@ export const applyReferralCode = async (userId, code) => {
       isNewMember = true;
     }
 
-    // Add user to referrer's team
-    if (!referrerMember.teamMembers.includes(userId)) {
+    // Add user to referrer's team (prevent duplicates)
+    if (!referrerMember.teamMembers.some(id => id.toString() === userId.toString())) {
       referrerMember.teamMembers.push(userId);
       referrerMember.directCount = referrerMember.teamMembers.length;
     }

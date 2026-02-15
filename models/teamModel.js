@@ -52,17 +52,18 @@ const TeamMemberSchema = new mongoose.Schema(
       min: 0,
     },
     // Binary Tree Tracking
+    // Note: After 2:2 is achieved, these can grow unlimited
     leftLegCount: {
       type: Number,
       default: 0,
       min: 0,
-      max: 2, // Binary = max 2 direct under each leg
+      // No max - can grow unlimited after 2:2
     },
     rightLegCount: {
       type: Number,
       default: 0,
       min: 0,
-      max: 2, // Binary = max 2 direct under each leg
+      // No max - can grow unlimited after 2:2
     },
     leftLegPV: {
       type: Number,
