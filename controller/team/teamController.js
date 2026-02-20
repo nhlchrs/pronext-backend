@@ -2,7 +2,9 @@ import { TeamMember, Referral, Bonus } from "../../models/teamModel.js";
 import Commission from "../../models/commissionModel.js";
 import Payout from "../../models/payoutModel.js";
 import User from "../../models/authModel.js";
+import BinaryReward from "../../models/binaryRewardModel.js";
 import { v4 as uuidv4 } from "uuid";
+import { getRewardForRank } from "../../config/binaryRewardConfig.js";
 import {
   calculateDirectBonus,
   calculateLevelIncome,
@@ -11,6 +13,14 @@ import {
   getNextMilestone,
   checkLevelIncomQualification,
 } from "../../helpers/bonusCalculator.js";
+import {
+  isBinaryActivated,
+  calculateBinaryRank,
+  calculateBinaryCommission,
+  getNextRankInfo,
+  getRankBadge,
+  getRankColor,
+} from "../../helpers/binaryRankHelper.js";
 import logger from "../../helpers/logger.js";
 
 const teamLogger = logger.module("TEAM_CONTROLLER");
@@ -128,9 +138,45 @@ export const setSponsor = async (userId, sponsorId) => {
     // Add to sponsor's team
     sponsor.teamMembers.push(userId);
     sponsor.directCount = sponsor.teamMembers.length;
+
+    // Update totalActiveAffiliates (entire team count)
+    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount + sponsor.directCount;
+
+    // Recalculate binary rank based on totalActiveAffiliates
+    const rankData = calculateBinaryRank(sponsor.totalActiveAffiliates);
+    sponsor.binaryRank = rankData.name;
+    sponsor.binaryBonusPercent = rankData.bonusPercent;
+
+    // Track highest rank achieved (never decreases)
+    const rankHierarchy = ["NONE", "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR", "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD", "LUMINARY", "SOVEREIGN", "ZENITH"];
+    const currentRankIndex = rankHierarchy.indexOf(sponsor.binaryRank);
+    const highestRankIndex = rankHierarchy.indexOf(sponsor.highestRankAchieved || "NONE");
+    
+    if (currentRankIndex > highestRankIndex) {
+      sponsor.highestRankAchieved = sponsor.binaryRank;
+      sponsor.highestRankAchievedDate = new Date();
+      teamLogger.info("New highest rank achieved", {
+        userId: sponsor.userId,
+        newRank: sponsor.binaryRank,
+        previousRank: sponsor.highestRankAchieved,
+      });
+    }
+
+    // Calculate weaker leg PV
+    sponsor.weakerLegPV = Math.min(sponsor.leftLegPV || 0, sponsor.rightLegPV || 0);
+
+    // Check if binary system is activated (10+ direct referrals)
+    sponsor.binaryActivated = sponsor.directCount >= 10;
+
     await sponsor.save();
 
-    teamLogger.success("Sponsor assigned successfully", { userId, sponsorId, directCount: sponsor.directCount });
+    teamLogger.success("Sponsor assigned successfully", {
+      userId,
+      sponsorId,
+      directCount: sponsor.directCount,
+      totalActiveAffiliates: sponsor.totalActiveAffiliates,
+      binaryRank: sponsor.binaryRank,
+    });
 
     return {
       success: true,
@@ -273,8 +319,12 @@ const findNextAvailablePosition = async (startSponsor) => {
 };
 
 /**
- * Validate Binary Referral Code and Check Availability
- * LPRO/RPRO codes can only be used if the respective leg is not full (<2 members)
+ * Validate Binary Referral Code
+ * 
+ * UPDATED: Keep 2:2 system but track binary bonus after 10+ direct referrals
+ * - LPRO/RPRO codes limited to 2 members each (until 2:2 achieved)
+ * - After 2:2 achieved: unlimited growth
+ * - Binary commission: Only calculated if sponsor has 10+ direct referrals
  */
 export const validateBinaryReferralCode = async (referralCode) => {
   try {
@@ -298,7 +348,7 @@ export const validateBinaryReferralCode = async (referralCode) => {
       };
     }
 
-    // Binary code validation
+    // Binary code validation (LPRO or RPRO)
     const isLeftCode = referralCode.startsWith("LPRO-");
     const isRightCode = referralCode.startsWith("RPRO-");
 
@@ -314,25 +364,40 @@ export const validateBinaryReferralCode = async (referralCode) => {
       };
     }
 
+    // Check if binary bonus is activated (10+ direct referrals)
+    const binaryActivated = sponsor.directCount >= 10;
+    
     // Check if 2:2 is already achieved
     const has2x2 = sponsor.leftLegCount >= 2 && sponsor.rightLegCount >= 2;
     
+    teamLogger.info("Binary referral validation", {
+      sponsorId: sponsor.userId,
+      directCount: sponsor.directCount,
+      binaryActivated: binaryActivated,
+      has2x2: has2x2,
+      leftLegCount: sponsor.leftLegCount,
+      rightLegCount: sponsor.rightLegCount,
+      requestedPosition: isLeftCode ? "left" : "right",
+    });
+
     if (has2x2) {
       // After 2:2 is achieved, accept ANY code and place directly - NO SPILLOVER
-      teamLogger.info("2:2 already achieved - accepting any code for direct placement", {
-        sponsorId: sponsor.userId,
-        leftLegCount: sponsor.leftLegCount,
-        rightLegCount: sponsor.rightLegCount,
-        requestedPosition: isLeftCode ? "left" : "right",
-      });
+      const position = isLeftCode ? "left" : "right";
+      const currentCount = isLeftCode ? sponsor.leftLegCount : sponsor.rightLegCount;
+      
+      let message = `✅ Joining ${position} leg! Parent has achieved 2:2, all new members are direct referrals.`;
+      if (binaryActivated) {
+        message += ` Binary bonus active! Rank-based commission applies.`;
+      }
       
       return {
         success: true,
         sponsor,
-        position: isLeftCode ? "left" : "right",
+        position: position,
         isAvailable: true,
-        currentCount: isLeftCode ? sponsor.leftLegCount : sponsor.rightLegCount,
-        message: `✅ Joining ${isLeftCode ? 'left' : 'right'} leg! Parent has achieved 2:2, all new members are direct referrals.`,
+        currentCount: currentCount,
+        binaryActivated: binaryActivated,
+        message: message,
       };
     }
 
@@ -362,6 +427,7 @@ export const validateBinaryReferralCode = async (referralCode) => {
         position: "left",
         isAvailable: true,
         currentCount: sponsor.leftLegCount,
+        binaryActivated: binaryActivated,
       };
     }
 
@@ -390,6 +456,7 @@ export const validateBinaryReferralCode = async (referralCode) => {
         position: "right",
         isAvailable: true,
         currentCount: sponsor.rightLegCount,
+        binaryActivated: binaryActivated,
       };
     }
 
@@ -457,6 +524,34 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
       sponsor.rightLegCount += 1;
     }
 
+    // Update totalActiveAffiliates (entire team count)
+    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount + sponsor.directCount;
+
+    // Recalculate binary rank based on totalActiveAffiliates
+    const rankData = calculateBinaryRank(sponsor.totalActiveAffiliates);
+    sponsor.binaryRank = rankData.name;
+    sponsor.binaryBonusPercent = rankData.bonusPercent;
+
+    // Track highest rank achieved (never decreases)
+    const rankHierarchy = ["NONE", "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR", "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD", "LUMINARY", "SOVEREIGN", "ZENITH"];
+    const currentRankIndex = rankHierarchy.indexOf(sponsor.binaryRank);
+    const highestRankIndex = rankHierarchy.indexOf(sponsor.highestRankAchieved || "NONE");
+    
+    if (currentRankIndex > highestRankIndex) {
+      sponsor.highestRankAchieved = sponsor.binaryRank;
+      sponsor.highestRankAchievedDate = new Date();
+      teamLogger.info("New highest rank achieved", {
+        userId: sponsor.userId,
+        newRank: sponsor.binaryRank,
+      });
+    }
+
+    // Calculate weaker leg PV
+    sponsor.weakerLegPV = Math.min(sponsor.leftLegPV || 0, sponsor.rightLegPV || 0);
+
+    // Check if binary system is activated (10+ direct referrals)
+    sponsor.binaryActivated = sponsor.directCount >= 10;
+
     await sponsor.save();
 
     // Update sponsor's level based on new directCount
@@ -468,6 +563,8 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
       position,
       leftLegCount: sponsor.leftLegCount,
       rightLegCount: sponsor.rightLegCount,
+      totalActiveAffiliates: sponsor.totalActiveAffiliates,
+      binaryRank: sponsor.binaryRank,
     });
 
     return {
@@ -1082,6 +1179,18 @@ export const checkMemberStatus = async (userId) => {
         totalDownline: teamMember.totalDownline,
         sponsorId: teamMember.sponsorId,
         hasJoinedTeam: !!teamMember.sponsorId,
+        // Binary rank data
+        binaryActivated: teamMember.binaryActivated || false,
+        binaryRank: teamMember.binaryRank || "NONE",
+        binaryBonusPercent: teamMember.binaryBonusPercent || 0,
+        totalActiveAffiliates: teamMember.totalActiveAffiliates || 0,
+        leftLegPV: teamMember.leftLegPV || 0,
+        rightLegPV: teamMember.rightLegPV || 0,
+        leftLegCount: teamMember.leftLegCount || 0,
+        rightLegCount: teamMember.rightLegCount || 0,
+        weakerLegPV: teamMember.weakerLegPV || 0,
+        binaryCommissionEarned: teamMember.binaryCommissionEarned || 0,
+        lastBinaryCalculation: teamMember.lastBinaryCalculation,
       },
     };
   } catch (error) {
@@ -2209,6 +2318,27 @@ export const getReferralStats = async (userId) => {
       position: "main",
     });
 
+    // Calculate binary rank information
+    const directCount = member.directCount || 0;
+    const totalActiveAffiliates = member.totalActiveAffiliates || totalTeam;
+    const leftLegPV = member.leftLegPV || 0;
+    const rightLegPV = member.rightLegPV || 0;
+
+    // Calculate binary bonus (only if directCount >= 10)
+    const binaryBonus = calculateBinaryCommission(
+      directCount,
+      leftLegPV,
+      rightLegPV,
+      totalActiveAffiliates
+    );
+
+    // Get next rank info
+    const nextRank = getNextRankInfo(totalActiveAffiliates);
+
+    // Get rank badge and color
+    const rankBadge = getRankBadge(binaryBonus.rank);
+    const rankColor = getRankColor(binaryBonus.rank);
+
     const stats = {
       totalTeam,
       directReferrals,
@@ -2223,7 +2353,7 @@ export const getReferralStats = async (userId) => {
       leftTeamCount: leftTeamMembers,
       rightTeamCount: rightTeamMembers,
       mainTeamCount: mainTeamMembers,
-      // Binary tree status
+      // Binary tree status (old structure for backward compatibility)
       binaryTree: {
         leftLegCount: member.leftLegCount || 0,
         rightLegCount: member.rightLegCount || 0,
@@ -2233,8 +2363,25 @@ export const getReferralStats = async (userId) => {
         rightReferralActive: member.rightReferralActive !== false,
         lproAvailable: !member.leftLegFull && member.leftReferralActive !== false,
         rproAvailable: !member.rightLegFull && member.rightReferralActive !== false,
-        leftLegPV: member.leftLegPV || 0,
-        rightLegPV: member.rightLegPV || 0,
+        leftLegPV: leftLegPV,
+        rightLegPV: rightLegPV,
+      },
+      // NEW: Binary Rank System
+      binaryRank: {
+        activated: binaryBonus.activated,
+        currentRank: binaryBonus.rank,
+        rankBadge: rankBadge,
+        rankColor: rankColor,
+        bonusPercent: binaryBonus.bonusPercent,
+        weakerLegPV: binaryBonus.weakerLegPV,
+        commission: binaryBonus.commission,
+        totalActiveAffiliates: totalActiveAffiliates,
+        nextRank: nextRank.nextRank || null,
+        nextBonusPercent: nextRank.nextBonusPercent || null,
+        affiliatesNeeded: nextRank.affiliatesNeeded || 0,
+        message: binaryBonus.message,
+        needsMoreReferrals: directCount < 10,
+        referralsNeeded: Math.max(0, 10 - directCount),
       },
     };
 
@@ -2611,3 +2758,373 @@ export const getUserPayoutStats = async (userId) => {
   }
 };
 
+// ==================== BINARY REWARD SYSTEM ====================
+
+/**
+ * Get available rewards for user based on highest rank achieved
+ * Rewards are unlocked by highest rank, not current rank
+ * Each reward is one-time redeemable
+ */
+export const getAvailableRewards = async (userId) => {
+  try {
+    teamLogger.start("Getting available rewards", { userId });
+
+    // Get user's team member data
+    const member = await TeamMember.findOne({ userId });
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Use highest rank achieved (not current rank)
+    const highestRank = member.highestRankAchieved || "NONE";
+    
+    if (highestRank === "NONE") {
+      return {
+        success: true,
+        currentRank: member.binaryRank || "NONE",
+        highestRank: "NONE",
+        message: "No rank achieved yet. Build your team to earn ranks!",
+        availableRewards: [],
+        claimedRewards: [],
+      };
+    }
+
+    // Get rank hierarchy to determine all unlocked rewards
+    const rankHierarchy = [
+      "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR",
+      "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD",
+      "LUMINARY", "SOVEREIGN", "ZENITH"
+    ];
+    
+    const highestRankIndex = rankHierarchy.indexOf(highestRank);
+    if (highestRankIndex === -1) {
+      return {
+        success: true,
+        currentRank: member.binaryRank || "NONE",
+        highestRank,
+        availableRewards: [],
+        claimedRewards: [],
+      };
+    }
+
+    // All ranks up to and including highest rank are unlocked
+    const unlockedRanks = rankHierarchy.slice(0, highestRankIndex + 1);
+
+    // Get already redeemed rewards
+    const redeemedRewards = await BinaryReward.find({ userId });
+    const redeemedRanks = redeemedRewards.map(r => r.rank);
+
+    // Available rewards = unlocked but not redeemed
+    const availableRanks = unlockedRanks.filter(rank => !redeemedRanks.includes(rank));
+
+    // Format available rewards
+    const availableRewardsWithDetails = availableRanks.map(rank => {
+      const rewardConfig = getRewardForRank(rank);
+      return {
+        rank,
+        badge: rewardConfig?.badge || "🎁",
+        title: rewardConfig?.title || `${rank} Reward`,
+        rewardType: rewardConfig?.rewardType || "UNKNOWN",
+        rewardName: rewardConfig?.rewardName || "Reward",
+        rewardDescription: rewardConfig?.rewardDescription || "",
+        requiresSize: rewardConfig?.requiresSize || false,
+        requiresColor: rewardConfig?.requiresColor || false,
+        colors: rewardConfig?.colors || [],
+        requiresShipping: rewardConfig?.requiresShipping !== false,
+        canRedeem: true,
+      };
+    });
+
+    teamLogger.success("Available rewards retrieved", {
+      userId,
+      currentRank: member.binaryRank,
+      highestRank,
+      availableCount: availableRewardsWithDetails.length,
+      redeemedCount: redeemedRewards.length,
+    });
+
+    return {
+      success: true,
+      currentRank: member.binaryRank || "NONE",
+      highestRank,
+      totalActiveAffiliates: member.totalActiveAffiliates || 0,
+      availableRewards: availableRewardsWithDetails,
+      claimedRewards: redeemedRewards.map(r => ({
+        rank: r.rank,
+        rewardType: r.rewardType,
+        status: r.status,
+        claimedDate: r.claimedDate,
+        trackingNumber: r.trackingNumber,
+      })),
+    };
+  } catch (error) {
+    teamLogger.error("Error getting available rewards", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Redeem a reward for a specific rank
+ * One-time redemption based on highest rank achieved
+ */
+export const claimReward = async (userId, rewardData) => {
+  try {
+    const { rank, size, color, shippingAddress, notes } = rewardData;
+
+    teamLogger.start("Redeeming reward", { userId, rank });
+
+    // Validate user
+    const member = await TeamMember.findOne({ userId });
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Check if user has achieved this rank (based on highest rank, not current)
+    const rankHierarchy = [
+      "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR",
+      "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD",
+      "LUMINARY", "SOVEREIGN", "ZENITH"
+    ];
+    
+    const highestRank = member.highestRankAchieved || "NONE";
+    const requestedRankIndex = rankHierarchy.indexOf(rank);
+    const highestRankIndex = rankHierarchy.indexOf(highestRank);
+
+    if (requestedRankIndex === -1 || requestedRankIndex > highestRankIndex) {
+      return {
+        success: false,
+        message: "You haven't achieved this rank yet.",
+      };
+    }
+
+    // Check if reward already redeemed
+    const existingReward = await BinaryReward.findOne({ userId, rank });
+    if (existingReward) {
+      return {
+        success: false,
+        message: "Reward for this rank already redeemed. Each reward can only be claimed once.",
+      };
+    }
+
+    // Get reward configuration
+    const rewardConfig = getRewardForRank(rank);
+    if (!rewardConfig) {
+      return {
+        success: false,
+        message: "Invalid reward rank.",
+      };
+    }
+
+    // Validate shipping address if required
+    if (rewardConfig.requiresShipping) {
+      if (!shippingAddress || !shippingAddress.street || !shippingAddress.city) {
+        return {
+          success: false,
+          message: "Valid shipping address is required for this reward.",
+        };
+      }
+    }
+
+    // Create reward redemption record
+    const reward = new BinaryReward({
+      userId,
+      rank,
+      rewardType: rewardConfig.rewardType,
+      rewardValue: rewardConfig.cashAmount || rewardConfig.voucherAmount || 0,
+      status: "CLAIMED",
+      claimedDate: new Date(),
+      shippingAddress: rewardConfig.requiresShipping ? shippingAddress : null,
+      size: rewardConfig.requiresSize ? (size || "N/A") : "N/A",
+      color: rewardConfig.requiresColor ? (color || null) : null,
+      notes: notes || null,
+      achievedDate: member.highestRankAchievedDate || new Date(),
+    });
+
+    await reward.save();
+
+    teamLogger.success("Reward redeemed successfully", {
+      userId,
+      rank,
+      rewardType: rewardConfig.rewardType,
+      rewardId: reward._id,
+    });
+
+    return {
+      success: true,
+      message: "Reward redeemed successfully! It will be processed and delivered soon.",
+      reward: {
+        id: reward._id,
+        rank: reward.rank,
+        rewardType: reward.rewardType,
+        rewardName: rewardConfig.rewardName,
+        status: reward.status,
+        claimedDate: reward.claimedDate,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error redeeming reward", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Get reward claim history for user
+ */
+export const getRewardHistory = async (userId) => {
+  try {
+    teamLogger.start("Getting reward history", { userId });
+
+    const rewards = await BinaryReward.find({ userId })
+      .sort({ claimedDate: -1 });
+
+    teamLogger.success("Reward history retrieved", {
+      userId,
+      count: rewards.length,
+    });
+
+    return {
+      success: true,
+      rewards: rewards.map(r => ({
+        id: r._id,
+        rank: r.rank,
+        rewardType: r.rewardType,
+        status: r.status,
+        claimedDate: r.claimedDate,
+        processingDate: r.processingDate,
+        shippedDate: r.shippedDate,
+        deliveredDate: r.deliveredDate,
+        trackingNumber: r.trackingNumber,
+        shippingAddress: r.shippingAddress,
+        size: r.size,
+        color: r.color,
+      })),
+    };
+  } catch (error) {
+    teamLogger.error("Error getting reward history", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Update reward status (Admin only)
+ */
+export const updateRewardStatus = async (rewardId, status, additionalData = {}) => {
+  try {
+    teamLogger.start("Updating reward status", { rewardId, status });
+
+    const reward = await BinaryReward.findById(rewardId);
+    if (!reward) {
+      return {
+        success: false,
+        message: "Reward not found",
+      };
+    }
+
+    await reward.updateStatus(status, additionalData);
+
+    teamLogger.success("Reward status updated", {
+      rewardId,
+      status,
+      userId: reward.userId,
+    });
+
+    return {
+      success: true,
+      message: "Reward status updated successfully",
+      reward: {
+        id: reward._id,
+        status: reward.status,
+        trackingNumber: reward.trackingNumber,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error updating reward status", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Get all reward claims (Admin only)
+ */
+export const getAllRewardClaims = async (filters = {}) => {
+  try {
+    const { status, rank, page = 1, limit = 20 } = filters;
+
+    teamLogger.start("Getting all reward claims", { filters });
+
+    const query = {};
+    if (status) query.status = status;
+    if (rank) query.rank = rank;
+
+    const skip = (page - 1) * limit;
+
+    const rewards = await BinaryReward.find(query)
+      .populate("userId", "fname lname email phone")
+      .sort({ claimedDate: -1 })
+      .skip(skip)
+      .limit(limit);
+
+    const total = await BinaryReward.countDocuments(query);
+
+    teamLogger.success("All reward claims retrieved", {
+      total,
+      page,
+      limit,
+    });
+
+    return {
+      success: true,
+      rewards: rewards.map(r => ({
+        id: r._id,
+        user: {
+          id: r.userId._id,
+          name: `${r.userId.fname} ${r.userId.lname}`,
+          email: r.userId.email,
+          phone: r.userId.phone,
+        },
+        rank: r.rank,
+        rewardType: r.rewardType,
+        status: r.status,
+        claimedDate: r.claimedDate,
+        processingDate: r.processingDate,
+        shippedDate: r.shippedDate,
+        deliveredDate: r.deliveredDate,
+        trackingNumber: r.trackingNumber,
+        shippingAddress: r.shippingAddress,
+        size: r.size,
+        color: r.color,
+        notes: r.notes,
+      })),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting all reward claims", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};

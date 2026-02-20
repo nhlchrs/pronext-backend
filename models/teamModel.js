@@ -91,6 +91,78 @@ const TeamMemberSchema = new mongoose.Schema(
       type: Boolean,
       default: true, // RPRO code active
     },
+    // Binary Bonus System (Activated after 10+ direct referrals)
+    binaryActivated: {
+      type: Boolean,
+      default: false, // Becomes true when directCount >= 10
+    },
+    binaryRank: {
+      type: String,
+      enum: [
+        "NONE",
+        "IGNITOR",
+        "SPARK",
+        "RISER",
+        "PIONEER",
+        "INNOVATOR",
+        "TRAILBLAZER",
+        "CATALYST",
+        "MOGUL",
+        "VANGUARD",
+        "LUMINARY",
+        "SOVEREIGN",
+        "ZENITH",
+      ],
+      default: "NONE",
+    },
+    highestRankAchieved: {
+      type: String,
+      enum: [
+        "NONE",
+        "IGNITOR",
+        "SPARK",
+        "RISER",
+        "PIONEER",
+        "INNOVATOR",
+        "TRAILBLAZER",
+        "CATALYST",
+        "MOGUL",
+        "VANGUARD",
+        "LUMINARY",
+        "SOVEREIGN",
+        "ZENITH",
+      ],
+      default: "NONE",
+    },
+    highestRankAchievedDate: {
+      type: Date,
+      default: null,
+    },
+    binaryBonusPercent: {
+      type: Number,
+      default: 0, // 10%, 15%, or 20% based on rank
+      min: 0,
+      max: 20,
+    },
+    totalActiveAffiliates: {
+      type: Number,
+      default: 0, // Total active team members (for rank calculation)
+      min: 0,
+    },
+    weakerLegPV: {
+      type: Number,
+      default: 0, // Smaller of leftLegPV or rightLegPV
+      min: 0,
+    },
+    binaryCommissionEarned: {
+      type: Number,
+      default: 0, // Total binary commission earned
+      min: 0,
+    },
+    lastBinaryCalculation: {
+      type: Date,
+      default: null,
+    },
     totalDownline: {
       type: Number,
       default: 0,

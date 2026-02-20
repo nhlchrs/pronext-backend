@@ -31,6 +31,11 @@ import {
   getUserPayoutHistory,
   getUserPayoutDetails,
   getUserPayoutStats,
+  getAvailableRewards,
+  claimReward,
+  getRewardHistory,
+  updateRewardStatus,
+  getAllRewardClaims,
 } from "./teamController.js";
 
 const router = express.Router();
@@ -410,6 +415,65 @@ router.get("/team/referral/stats/:userId", requireSignin, async (req, res) => {
   try {
     const result = await getReferralStats(req.params.userId);
     return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== BINARY REWARD ROUTES ====================
+
+// Get available rewards for user
+router.get("/team/rewards/available", requireSignin, async (req, res) => {
+  try {
+    const result = await getAvailableRewards(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Claim a reward
+router.post("/team/rewards/claim", requireSignin, async (req, res) => {
+  try {
+    const result = await claimReward(req.user._id, req.body);
+    return res.status(result.success ? 201 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get reward history
+router.get("/team/rewards/history", requireSignin, async (req, res) => {
+  try {
+    const result = await getRewardHistory(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Update reward status (Admin only - add admin middleware later)
+router.patch("/team/rewards/:rewardId/status", requireSignin, async (req, res) => {
+  try {
+    const { status, trackingNumber } = req.body;
+    const result = await updateRewardStatus(req.params.rewardId, status, { trackingNumber });
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get all reward claims (Admin only - add admin middleware later)
+router.get("/team/rewards/all", requireSignin, async (req, res) => {
+  try {
+    const filters = {
+      status: req.query.status,
+      rank: req.query.rank,
+      page: parseInt(req.query.page) || 1,
+      limit: parseInt(req.query.limit) || 20,
+    };
+    const result = await getAllRewardClaims(filters);
+    return res.status(result.success ? 200 : 400).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
