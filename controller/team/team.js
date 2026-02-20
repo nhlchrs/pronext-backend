@@ -479,4 +479,40 @@ router.get("/team/rewards/all", requireSignin, async (req, res) => {
   }
 });
 
+// ==================== BINARY MATCHING ROUTES ====================
+
+// Get binary status and PV information
+router.get("/team/binary/status", requireSignin, async (req, res) => {
+  try {
+    const { getBinaryStatus } = await import('../../helpers/binaryMatchingService.js');
+    const result = await getBinaryStatus(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Manual trigger for weekly matching (Admin only - for testing)
+router.post("/team/binary/trigger-matching", requireSignin, async (req, res) => {
+  try {
+    // TODO: Add admin check middleware
+    const { triggerWeeklyMatchingNow } = await import('../../helpers/binaryMatchingService.js');
+    const result = await triggerWeeklyMatchingNow();
+    return res.status(200).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get binary scheduler status
+router.get("/team/binary/scheduler-status", requireSignin, async (req, res) => {
+  try {
+    const { getSchedulerStatus } = await import('../../helpers/binaryScheduler.js');
+    const status = getSchedulerStatus();
+    return res.status(200).json({ success: true, data: status });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

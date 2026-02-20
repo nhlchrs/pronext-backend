@@ -218,6 +218,16 @@ httpServer.listen(PORT, () => {
   
   // Initialize scheduled jobs
   initializeCronJobs();
+  
+  // Initialize binary matching scheduler (executes every Friday 23:59)
+  try {
+    import('./helpers/binaryScheduler.js').then(({ startBinaryMatchingScheduler }) => {
+      startBinaryMatchingScheduler();
+      console.log('✅ Binary matching scheduler initialized');
+    });
+  } catch (error) {
+    console.error('❌ Failed to initialize binary scheduler:', error);
+  }
 });
 
 app.get("/", (req, res) => {

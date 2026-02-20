@@ -1,9 +1,11 @@
 /**
  * Binary Rank System Helper
  * 
- * Binary bonus is activated ONLY after 10+ direct referrals (Level 1)
- * Commission is calculated on the SMALLER leg (weaker leg)
- * Ranks are based on total active affiliates
+ * UPDATED SYSTEM:
+ * - Phase 1: Binary activates with 1:2 ratio (not 10+ directs)
+ * - Phase 2: Weekly 1:1 matching every Friday 23:59
+ * - PV Generation: 94.5 PV per $135 subscription
+ * - Ranks based on total active affiliates
  */
 
 // Binary Rank Configuration
@@ -23,15 +25,17 @@ export const BINARY_RANKS = [
   { name: "ZENITH", minAffiliates: 44444, bonusPercent: 20 },
 ];
 
-// PV (Point Value) configuration
-export const PV_PER_AFFILIATE = 42; // Based on subscription (70% of $1.35 = $0.945, calculated on 42 PV)
+// PV Configuration
+export const PV_PER_SUBSCRIPTION = 94.5; // Each $135 subscription = 94.5 PV
+export const SUBSCRIPTION_PRICE = 135;
 
 /**
- * Check if binary bonus is activated
- * Binary is activated when user has 10+ direct referrals
+ * Check if binary bonus is activated (1:2 minimum criteria)
+ * Formula: (Left >= 1 AND Right >= 2) OR (Right >= 1 AND Left >= 2)
  */
-export const isBinaryActivated = (directCount) => {
-  return directCount >= 10;
+export const isBinaryActivated = (leftLegCount, rightLegCount) => {
+  return (leftLegCount >= 1 && rightLegCount >= 2) ||
+         (rightLegCount >= 1 && leftLegCount >= 2);
 };
 
 /**
@@ -208,7 +212,8 @@ export const getRankColor = (rankName) => {
 
 export default {
   BINARY_RANKS,
-  PV_PER_AFFILIATE,
+  PV_PER_SUBSCRIPTION,
+  SUBSCRIPTION_PRICE,
   isBinaryActivated,
   calculateBinaryRank,
   calculateWeakerLegPV,

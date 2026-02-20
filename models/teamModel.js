@@ -94,7 +94,11 @@ const TeamMemberSchema = new mongoose.Schema(
     // Binary Bonus System (Activated after 10+ direct referrals)
     binaryActivated: {
       type: Boolean,
-      default: false, // Becomes true when directCount >= 10
+      default: false, // Becomes true when 1:2 ratio is achieved
+    },
+    binaryActivationDate: {
+      type: Date,
+      default: null, // When 1:2 ratio was first achieved
     },
     binaryRank: {
       type: String,
@@ -162,6 +166,44 @@ const TeamMemberSchema = new mongoose.Schema(
     lastBinaryCalculation: {
       type: Date,
       default: null,
+    },
+    // Weekly Binary Matching System
+    lastBinaryMatchDate: {
+      type: Date,
+      default: null, // Last Friday 23:59 match execution
+    },
+    lastActivityDate: {
+      type: Date,
+      default: Date.now, // Updated on any team activity
+    },
+    carryForwardLeftPV: {
+      type: Number,
+      default: 0, // Remaining left PV after weekly match
+      min: 0,
+    },
+    carryForwardRightPV: {
+      type: Number,
+      default: 0, // Remaining right PV after weekly match
+      min: 0,
+    },
+    totalMatchedPV: {
+      type: Number,
+      default: 0, // Total PV matched in all weeks
+      min: 0,
+    },
+    weeklyBinaryIncome: {
+      type: Number,
+      default: 0, // Income from current week
+      min: 0,
+    },
+    totalBinaryIncome: {
+      type: Number,
+      default: 0, // Lifetime binary income
+      min: 0,
+    },
+    inactivityResetDate: {
+      type: Date,
+      default: null, // Last time PV was reset due to 90-day inactivity
     },
     totalDownline: {
       type: Number,
