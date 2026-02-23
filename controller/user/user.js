@@ -20,6 +20,7 @@ import {
   checkTermsAgreement,
   updateCryptoWallet,
   getCryptoWallet,
+  createBulkTestUsers,
 } from "./userController.js";
 
 const router = express.Router();
@@ -62,5 +63,8 @@ router.get("/admin/user/:userId", requireSignin, isStaff, getUserById);
 router.put("/admin/user/:userId/role", requireSignin, isAdmin, updateUserRole);
 router.get("/admin/user-stats", requireSignin, isStaff, getUserStatistics);
 router.post("/admin/reset-login-counts", requireSignin, isAdmin, resetDailyLoginCounts);
+
+// Admin testing tools
+router.post("/admin/create-test-users", requireSignin, isAdmin, createBulkTestUsers);
 
 export default router;

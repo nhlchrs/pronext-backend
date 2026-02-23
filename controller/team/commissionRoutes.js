@@ -8,6 +8,10 @@ import {
   getCommissionBreakdown,
   calculateEstimatedEarnings,
 } from "../../helpers/commissionService.js";
+import {
+  generateBinaryCommissionForUser,
+  generateBinaryCommissionsForAll,
+} from "../../helpers/binaryCommissionService.js";
 import logger from "../../helpers/logger.js";
 
 const router = express.Router();
@@ -504,6 +508,125 @@ router.post("/admin/commission/reject/:id", requireSignin, isAdmin, async (req, 
     return res.status(500).json({
       success: false,
       message: "Error rejecting commission",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/commission/generate-binary/:userId
+ * Generate binary commission for a specific user (Admin only)
+ */
+router.post("/commission/generate-binary/:userId", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    commissionLogger.start("Generating binary commission (admin)", { targetUserId: userId, adminId: req.user._id });
+
+    const result = await generateBinaryCommissionForUser(userId);
+
+    if (result.success) {
+      commissionLogger.success("Binary commission generated (admin)", {
+        targetUserId: userId,
+        commissionId: result.commission?._id,
+        amount: result.commission?.amount,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.commission,
+      });
+    } else {
+      commissionLogger.warn("Binary commission generation failed (admin)", {
+        targetUserId: userId,
+        reason: result.message,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    commissionLogger.error("Error generating binary commission (admin)", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating binary commission",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/commission/generate-my-binary
+ * Generate binary commission for the logged-in user
+ */
+router.post("/commission/generate-my-binary", requireSignin, async (req, res) => {
+  try {
+    commissionLogger.start("Generating binary commission (user)", { userId: req.user._id });
+
+    const result = await generateBinaryCommissionForUser(req.user._id);
+
+    if (result.success) {
+      commissionLogger.success("Binary commission generated (user)", {
+        userId: req.user._id,
+        commissionId: result.commission?._id,
+        amount: result.commission?.amount,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: result.message,
+        data: result.commission,
+      });
+    } else {
+      commissionLogger.warn("Binary commission generation failed (user)", {
+        userId: req.user._id,
+        reason: result.message,
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: result.message,
+      });
+    }
+  } catch (error) {
+    commissionLogger.error("Error generating binary commission (user)", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating binary commission",
+      error: error.message,
+    });
+  }
+});
+
+/**
+ * POST /api/commission/generate-all-binary
+ * Generate binary commissions for all qualified users (Admin only)
+ */
+router.post("/commission/generate-all-binary", requireSignin, isAdmin, async (req, res) => {
+  try {
+    commissionLogger.start("Generating binary commissions for all (admin)", { adminId: req.user._id });
+
+    const results = await generateBinaryCommissionsForAll();
+
+    commissionLogger.success("Binary commissions generation completed (admin)", {
+      total: results.total,
+      successful: results.successful,
+      failed: results.failed,
+      skipped: results.skipped,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Binary commissions generated: ${results.successful} successful, ${results.failed} failed, ${results.skipped} skipped`,
+      data: results,
+    });
+  } catch (error) {
+    commissionLogger.error("Error generating binary commissions for all (admin)", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error generating binary commissions",
       error: error.message,
     });
   }

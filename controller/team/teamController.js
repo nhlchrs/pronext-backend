@@ -140,7 +140,8 @@ export const setSponsor = async (userId, sponsorId) => {
     sponsor.directCount = sponsor.teamMembers.length;
 
     // Update totalActiveAffiliates (entire team count)
-    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount + sponsor.directCount;
+    // Note: leftLegCount and rightLegCount already include all members in those legs
+    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount;
 
     // Recalculate binary rank based on totalActiveAffiliates
     const rankData = calculateBinaryRank(sponsor.totalActiveAffiliates);
@@ -165,8 +166,8 @@ export const setSponsor = async (userId, sponsorId) => {
     // Calculate weaker leg PV
     sponsor.weakerLegPV = Math.min(sponsor.leftLegPV || 0, sponsor.rightLegPV || 0);
 
-    // Check if binary system is activated (10+ direct referrals)
-    sponsor.binaryActivated = sponsor.directCount >= 10;
+    // Check if binary system is activated (2:1 or 1:2 ratio achieved)
+    sponsor.binaryActivated = (sponsor.leftLegCount >= 2 && sponsor.rightLegCount >= 1) || (sponsor.leftLegCount >= 1 && sponsor.rightLegCount >= 2);
 
     await sponsor.save();
 
@@ -321,10 +322,10 @@ const findNextAvailablePosition = async (startSponsor) => {
 /**
  * Validate Binary Referral Code
  * 
- * UPDATED: Keep 2:2 system but track binary bonus after 10+ direct referrals
- * - LPRO/RPRO codes limited to 2 members each (until 2:2 achieved)
- * - After 2:2 achieved: unlimited growth
- * - Binary commission: Only calculated if sponsor has 10+ direct referrals
+ * Binary System 2:1 or 1:2 Activation:
+ * - LPRO/RPRO codes limited to 2 members each (until 2:1 or 1:2 achieved)
+ * - After 2:1 or 1:2 achieved: unlimited growth in both legs
+ * - Binary commission: Calculated after 2:1 or 1:2 ratio achieved (rank-based percentage)
  */
 export const validateBinaryReferralCode = async (referralCode) => {
   try {
@@ -364,11 +365,10 @@ export const validateBinaryReferralCode = async (referralCode) => {
       };
     }
 
-    // Check if binary bonus is activated (10+ direct referrals)
-    const binaryActivated = sponsor.directCount >= 10;
-    
-    // Check if 2:2 is already achieved
+    // Check if 2:2 is already achieved (binary activation criteria)
     const has2x2 = sponsor.leftLegCount >= 2 && sponsor.rightLegCount >= 2;
+    const binaryActivated = has2x2;
+    
     
     teamLogger.info("Binary referral validation", {
       sponsorId: sponsor.userId,
@@ -525,7 +525,8 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
     }
 
     // Update totalActiveAffiliates (entire team count)
-    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount + sponsor.directCount;
+    // Note: leftLegCount and rightLegCount already include all members in those legs
+    sponsor.totalActiveAffiliates = sponsor.leftLegCount + sponsor.rightLegCount;
 
     // Recalculate binary rank based on totalActiveAffiliates
     const rankData = calculateBinaryRank(sponsor.totalActiveAffiliates);
@@ -549,8 +550,8 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
     // Calculate weaker leg PV
     sponsor.weakerLegPV = Math.min(sponsor.leftLegPV || 0, sponsor.rightLegPV || 0);
 
-    // Check if binary system is activated (10+ direct referrals)
-    sponsor.binaryActivated = sponsor.directCount >= 10;
+    // Check if binary system is activated (2:1 or 1:2 ratio achieved)
+    sponsor.binaryActivated = (sponsor.leftLegCount >= 2 && sponsor.rightLegCount >= 1) || (sponsor.leftLegCount >= 1 && sponsor.rightLegCount >= 2);
 
     await sponsor.save();
 

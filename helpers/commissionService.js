@@ -61,52 +61,46 @@ export const generatePurchaseCommissions = async (buyerId, amount, transactionId
 
 /**
  * Generate Direct Bonus for the sponsor
- * Direct bonus is paid for referrals and resets every 30 days
+ * Direct bonus is paid for each referral based on total direct count
  */
 export const generateDirectBonus = async (sponsorTeam, buyerId, transactionId, amount, buyer) => {
   try {
     if (!sponsorTeam || !sponsorTeam.userId) return null;
 
-    // Check if sponsor is in active 30-day bonus period
-    if (!isIn30DayBonusPeriod(sponsorTeam.enrollmentDate)) {
-      return null;
-    }
-
-    // Get current direct count for sponsor in this 30-day period
-    const currentPeriod = getCurrentBonusPeriod(sponsorTeam.enrollmentDate);
-    
-    // Count directs added in current 30-day period
-    const directs30Days = await TeamMember.countDocuments({
+    // Get total direct count for sponsor (all-time)
+    const totalDirects = await TeamMember.countDocuments({
       sponsorId: sponsorTeam.userId,
-      createdAt: {
-        $gte: currentPeriod.startDate,
-        $lt: currentPeriod.endDate,
-      },
     });
 
-    // Calculate direct bonus based on slab
-    const bonusPercentage = getDirectBonusPercentage(directs30Days);
+    // Calculate direct bonus based on total direct count slab
+    const bonusPercentage = getDirectBonusPercentage(totalDirects);
     const grossAmount = (amount * bonusPercentage) / 100;
 
     if (grossAmount <= 0) return null;
 
+    const now = new Date();
     const commission = await Commission.create({
       userId: sponsorTeam.userId,
       referrerId: buyerId,
       transactionId,
       commissionType: "direct_bonus",
-      level: 1, // Direct is level 1
+      level: 0, // Direct is level 1
       grossAmount,
       taxPercentage: 0,
       taxAmount: 0,
       netAmount: grossAmount,
       status: "pending",
-      earningDate: new Date(),
+      earningDate: now,
       period: {
-        month: currentPeriod.month,
-        year: currentPeriod.year,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
       },
-      description: `Direct bonus for referral of ${buyer?.fname} ${buyer?.lname}`,
+      description: `Direct bonus for referral of ${buyer?.fname} ${buyer?.lname} (${totalDirects} total directs - ${bonusPercentage}%)`,
+      metadata: {
+        totalDirectCount: totalDirects,
+        bonusPercentage: bonusPercentage,
+        referralName: `${buyer?.fname} ${buyer?.lname}`,
+      },
     });
 
     return commission;

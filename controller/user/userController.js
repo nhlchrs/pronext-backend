@@ -9,6 +9,14 @@ import {
   successResponseWithData,
 } from "../../helpers/apiResponse.js";
 import logger from "../../helpers/logger.js";
+import { TeamMember } from "../../models/teamModel.js";
+import {
+  generateReferralCode,
+  generateLeftReferralCode,
+  generateRightReferralCode,
+} from "../team/teamController.js";
+import paymentModel from "../../models/paymentModel.js";
+import { generatePurchaseCommissions } from "../../helpers/commissionService.js";
 
 const userLogger = logger.module("USER_CONTROLLER");
 
@@ -845,6 +853,249 @@ export const getCryptoWallet = async (req, res) => {
     );
   } catch (error) {
     userLogger.error("Error getting crypto wallet", error);
+    return ErrorResponse(res, error.message, 500);
+  }
+};
+
+/**
+ * Create bulk test users for testing the binary system
+ * Admin only - Creates users with default settings and unique referral codes
+ * POST /api/admin/create-test-users
+ */
+export const createBulkTestUsers = async (req, res) => {
+  try {
+    const { count, baseEmail, baseName, referralPrefix, generateCommissions=true } = req.body;
+    const adminId = req.user._id;
+
+    userLogger.start("Creating bulk test users", { count, adminId, generateCommissions });
+
+    // Validate input
+    if (!count || count < 1 || count > 100) {
+      return ErrorResponse(res, "Count must be between 1 and 100", 400);
+    }
+
+    const emailPrefix = baseEmail || "testuser";
+    const namePrefix = baseName || "Test User";
+    const refPrefix = referralPrefix || "USER";
+    const defaultPassword = "Test@123";
+    const shouldGenerateCommissions = generateCommissions === true; // Opt-in for commission generation
+    const PACKAGE_PRICE = 135; // Standard subscription price
+
+    // Hash password once for all users
+    const hashedPassword = await hashPassword(defaultPassword);
+
+    const createdUsers = [];
+    const errors = [];
+    const timestamp = Date.now().toString().slice(-6); // Last 6 digits for uniqueness
+    let totalPaymentsCreated = 0;
+    let totalCommissionsGenerated = 0;
+
+    for (let i = 1; i <= count; i++) {
+      try {
+        // Generate simple, unique referral code
+        const referralCode = `${refPrefix}${timestamp}${String(i).padStart(3, '0')}`;
+        
+        // Generate unique email and phone
+        const email = `${emailPrefix}${i}@test.com`;
+        const phone = `+1${timestamp}${String(i).padStart(4, '0')}`;
+
+        // Check if email already exists
+        const existingUser = await userModel.findOne({ email });
+        if (existingUser) {
+          errors.push({
+            index: i,
+            email,
+            error: "Email already exists",
+          });
+          continue;
+        }
+
+        // Check if referral code already exists
+        const existingReferral = await userModel.findOne({ referralCode });
+        if (existingReferral) {
+          errors.push({
+            index: i,
+            referralCode,
+            error: "Referral code already exists",
+          });
+          continue;
+        }
+
+        // Create user with subscription active
+        const subscriptionDurationDays = 720; // 2 years for test users
+        // Alternate between Pro and Premium tiers (odd = Pro, even = Premium)
+        const subscriptionTier = i % 2 === 1 ? "Pro" : "Premium";
+        
+        const user = await userModel.create({
+          fname: `${namePrefix}`,
+          lname: `${i}`,
+          email,
+          password: hashedPassword,
+          phone,
+          address: `Test Address ${i}`,
+          referralCode,
+          role: "User",
+          subscriptionStatus: true, // Active subscription
+          subscriptionTier: subscriptionTier, // Pro or Premium (alternating)
+          subscriptionExpiryDate: new Date(Date.now() + subscriptionDurationDays * 24 * 60 * 60 * 1000), // 720 days (2 years) from now
+          subscriptionActivatedDate: new Date(), // Activated now
+          lastPaymentDate: new Date(), // Payment recorded now
+          isVerified: true, // Email verified
+          termsAgreed: true, // Terms agreed
+          termsAgreedAt: new Date(),
+          dailyLoginCount: 0,
+          lastLoginDate: null,
+          isSuspended: false,
+          isBlocked: false,
+          isDeleted: false,
+          createdBy: adminId,
+        });
+
+        // Create TeamMember entry with three referral codes
+        const mainReferralCode = generateReferralCode(user._id);
+        const leftReferralCode = generateLeftReferralCode(user._id);
+        const rightReferralCode = generateRightReferralCode(user._id);
+
+        try {
+          await TeamMember.create({
+            userId: user._id,
+            referralCode: mainReferralCode,
+            leftReferralCode: leftReferralCode,
+            rightReferralCode: rightReferralCode,
+            position: "main",
+            sponsorId: null, // No sponsor initially - you'll add manually
+            directCount: 0,
+            leftLegCount: 0,
+            rightLegCount: 0,
+            binaryActivated: false,
+            binaryRank: "NONE",
+          });
+        } catch (teamMemberError) {
+          // If TeamMember creation fails, delete the user to prevent orphaned records
+          await userModel.findByIdAndDelete(user._id);
+          userLogger.error(`Failed to create TeamMember for user ${i}, rolled back user creation`, teamMemberError);
+          errors.push({
+            index: i,
+            email,
+            error: `TeamMember creation failed: ${teamMemberError.message}`,
+          });
+          continue;
+        }
+
+        // Optionally create payment and generate commissions
+        let paymentCreated = true;
+        let commissionsGenerated = 0;
+        
+        if (shouldGenerateCommissions) {
+          try {
+            // Create payment record
+            const paymentRecord = await paymentModel.create({
+              userId: user._id,
+              orderId: `TEST-${timestamp}-${i}-${user._id}`,
+              paymentId: `PAY-${timestamp}-${i}-${user._id}`,
+              invoiceId: `INV-${timestamp}-${i}-${user._id}`,
+              amount: PACKAGE_PRICE,
+              priceAmount: PACKAGE_PRICE,
+              currency: 'USD',
+              payCurrency: 'USD',
+              status: 'finished',
+              provider: 'nowpayments',
+              description: `Test subscription payment for ${user.email}`,
+              metadata: {
+                testPayment: true,
+                bulkCreation: true,
+                generatedAt: new Date(),
+              },
+            });
+            
+            paymentCreated = true;
+            totalPaymentsCreated++;
+            userLogger.success(`Payment created for ${user.email}`, { paymentId: paymentRecord._id });
+
+            // Generate commissions if user will have a sponsor (will be added later)
+            // Note: Commissions won't generate until sponsor is actually set
+            // But payment record is ready for when team structure is complete
+            
+          } catch (paymentError) {
+            userLogger.warn(`Failed to create payment for ${user.email}`, paymentError);
+            // Don't fail user creation if payment fails
+          }
+        }
+
+        createdUsers.push({
+          id: user._id,
+          name: `${user.fname} ${user.lname}`,
+          email: user.email,
+          phone: user.phone,
+          referralCode: user.referralCode,
+          password: defaultPassword,
+          subscriptionStatus: user.subscriptionStatus,
+          subscriptionTier: user.subscriptionTier,
+          subscriptionExpiryDate: user.subscriptionExpiryDate,
+          paymentCreated: paymentCreated,
+          teamReferralCodes: {
+            main: mainReferralCode,
+            left: leftReferralCode,
+            right: rightReferralCode,
+          },
+        });
+
+        userLogger.success(`Test user created: ${user.email} with referral codes - Main: ${mainReferralCode}, Left: ${leftReferralCode}, Right: ${rightReferralCode}`, { userId: user._id });
+      } catch (error) {
+        userLogger.error(`Error creating test user ${i}`, error);
+        errors.push({
+          index: i,
+          error: error.message,
+        });
+      }
+    }
+
+    userLogger.success(`Bulk test users creation completed`, {
+      requested: count,
+      created: createdUsers.length,
+      failed: errors.length,
+      paymentsCreated: totalPaymentsCreated,
+      commissionsGenerated: totalCommissionsGenerated,
+    });
+
+    // Format referral codes for easy copy-paste
+    const referralCodes = createdUsers.map(u => u.referralCode);
+    const mainCodes = createdUsers.map(u => u.teamReferralCodes.main);
+    const leftCodes = createdUsers.map(u => u.teamReferralCodes.left);
+    const rightCodes = createdUsers.map(u => u.teamReferralCodes.right);
+
+    return successResponseWithData(res, "Bulk test users created successfully", {
+      created: createdUsers,
+      errors: errors.length > 0 ? errors : undefined,
+      summary: {
+        requested: count,
+        successful: createdUsers.length,
+        failed: errors.length,
+        paymentsCreated: totalPaymentsCreated,
+        commissionsNote: shouldGenerateCommissions 
+          ? "Payment records created. Commissions will generate when sponsors are assigned."
+          : "Set 'generateCommissions: true' in request body to auto-create payments.",
+      },
+      credentials: {
+        defaultPassword,
+        note: "All users have the same password and are fully subscribed members (Pro/Premium tier alternating, 720 days / 2 years expiry) with team referral codes",
+      },
+      referralCodes: {
+        basic: referralCodes,
+        team: {
+          main: mainCodes,
+          left: leftCodes,
+          right: rightCodes,
+        },
+      },
+      quickReference: {
+        usersCreated: createdUsers.length,
+        basicCodes: referralCodes.join(', '),
+        note: "Each user has 3 team referral codes: main (PRO-*), left (LPRO-*), and right (RPRO-*)",
+      },
+    });
+  } catch (error) {
+    userLogger.error("Error creating bulk test users", error);
     return ErrorResponse(res, error.message, 500);
   }
 };
