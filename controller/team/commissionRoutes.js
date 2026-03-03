@@ -89,6 +89,11 @@ router.get("/commission/total-pending", requireSignin, async (req, res) => {
  */
 router.get("/commission/breakdown", requireSignin, async (req, res) => {
   try {
+    console.log('\n🚀 [API] /commission/breakdown endpoint called');
+    console.log('   User:', req.user.email);
+    console.log('   User ID:', req.user._id);
+    console.log('   User ID type:', typeof req.user._id);
+    
     const { startDate, endDate } = req.query;
 
     let start = new Date();
@@ -97,35 +102,26 @@ router.get("/commission/breakdown", requireSignin, async (req, res) => {
 
     let end = new Date();
     end.setMonth(end.getMonth() + 1);
-    end.setDate(0);
-    end.setHours(23, 59, 59, 999);
-
-    if (startDate) start = new Date(startDate);
-    if (endDate) end = new Date(endDate);
-
     commissionLogger.start("Fetching commission breakdown", {
       userId: req.user._id,
-      startDate: start,
-      endDate: end,
     });
 
-    const breakdown = await getCommissionBreakdown(req.user._id, start, end);
+    console.log('\n📞 [API] Calling getCommissionBreakdown...');
+    const breakdown = await getCommissionBreakdown(req.user._id);
 
+    console.log('\n✅ [API] Breakdown received from service:');
+    console.log('   Breakdown:', JSON.stringify(breakdown, null, 2));
+    
     commissionLogger.success("Commission breakdown fetched", {
       userId: req.user._id,
       breakdown,
     });
 
+    console.log('\n📤 [API] Sending response to client...');
     return res.status(200).json({
       success: true,
       message: "Commission breakdown retrieved successfully",
-      data: {
-        breakdown,
-        period: {
-          startDate: start,
-          endDate: end,
-        },
-      },
+      breakdown,
     });
   } catch (error) {
     commissionLogger.error("Error fetching commission breakdown", error);

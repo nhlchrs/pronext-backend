@@ -1,4 +1,5 @@
 // Commission Calculation Service - Bonus Structure v1.0
+import mongoose from "mongoose";
 import Commission from "../models/commissionModel.js";
 import { TeamMember } from "../models/teamModel.js";
 import User from "../models/authModel.js";
@@ -357,17 +358,25 @@ export const getTotalPendingAmount = async (userId) => {
 /**
  * Get commission breakdown by type
  */
-export const getCommissionBreakdown = async (userId, startDate, endDate) => {
+export const getCommissionBreakdown = async (userId) => {
   try {
+    console.log('\n🔍 [DEBUG] getCommissionBreakdown called');
+    console.log('   userId:', userId);
+    console.log('   userId type:', typeof userId);
+    
+    // Convert userId to ObjectId if it's a string
+    const userObjectId = typeof userId === 'string' 
+      ? new mongoose.Types.ObjectId(userId) 
+      : userId;
+    
+    console.log('   userObjectId:', userObjectId);
+    console.log('   userObjectId type:', typeof userObjectId);
+    
+    // Query all commissions for user (all-time earnings)
+    console.log('\n📊 [DEBUG] Running MongoDB aggregation...');
     const commissions = await Commission.aggregate([
       {
-        $match: {
-          userId,
-          createdAt: {
-            $gte: startDate,
-            $lt: endDate,
-          },
-        },
+        $match: { userId: userObjectId },
       },
       {
         $group: {
@@ -378,19 +387,33 @@ export const getCommissionBreakdown = async (userId, startDate, endDate) => {
       },
     ]);
 
+    console.log('\n✅ [DEBUG] Aggregation result:');
+    console.log('   Raw commissions array:', JSON.stringify(commissions, null, 2));
+    console.log('   Number of commission types found:', commissions.length);
+
     const breakdown = {
-      directBonus: 0,
-      levelIncome: 0,
-      binaryBonus: 0,
-      rewardBonus: 0,
+      direct_bonus: 0,
+      level_income: 0,
+      binary_bonus: 0,
+      reward_bonus: 0,
     };
 
+    console.log('\n🔄 [DEBUG] Processing commission types...');
     commissions.forEach((item) => {
-      if (item._id === "direct_bonus") breakdown.directBonus = item.total;
-      if (item._id === "level_income") breakdown.levelIncome = item.total;
-      if (item._id === "binary_bonus") breakdown.binaryBonus = item.total;
-      if (item._id === "reward_bonus") breakdown.rewardBonus = item.total;
+      console.log(`   Processing: ${item._id} = $${item.total} (${item.count} records)`);
+      if (item._id === "direct_bonus") breakdown.direct_bonus = item.total;
+      if (item._id === "level_income") breakdown.level_income = item.total;
+      if (item._id === "binary_bonus") breakdown.binary_bonus = item.total;
+      if (item._id === "reward_bonus") breakdown.reward_bonus = item.total;
     });
+
+    console.log('\n📊 [DEBUG] Final Commission Breakdown for user:', userId);
+    console.log('   Direct Bonus:', breakdown.direct_bonus);
+    console.log('   Level Income:', breakdown.level_income);
+    console.log('   Binary Bonus:', breakdown.binary_bonus);
+    console.log('   Reward Bonus:', breakdown.reward_bonus);
+    console.log('   Total:', breakdown.direct_bonus + breakdown.level_income + breakdown.binary_bonus + breakdown.reward_bonus);
+    console.log('\n');
 
     return breakdown;
   } catch (error) {
