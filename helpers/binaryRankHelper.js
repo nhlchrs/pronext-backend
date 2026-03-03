@@ -59,7 +59,7 @@ export const calculateBinaryRank = (totalActiveAffiliates) => {
 };
 
 /**
- * Calculate weaker leg PV
+ * Calculate weaker leg PV (Simple matching - 1:1)
  * Commission is based on the smaller leg
  */
 export const calculateWeakerLegPV = (leftLegPV, rightLegPV) => {
@@ -67,45 +67,90 @@ export const calculateWeakerLegPV = (leftLegPV, rightLegPV) => {
 };
 
 /**
+ * Calculate 1:2 Matching Volume
+ * User can match either:
+ * - 1 unit from left with 2 from right
+ * - 2 units from left with 1 from right
+ * Takes the MAXIMUM possible matching
+ */
+export const calculate1to2Matching = (leftLegPV, rightLegPV) => {
+  // Option 1: Match 1 from left with 2 from right
+  // matched_left = MIN(LPro, RPro / 2)
+  const matchedLeft = Math.min(leftLegPV, rightLegPV / 2);
+  
+  // Option 2: Match 2 from left with 1 from right
+  // matched_right = MIN(RPro, LPro / 2)
+  const matchedRight = Math.min(rightLegPV, leftLegPV / 2);
+  
+  // Take the maximum matching
+  const matchedVolume = Math.max(matchedLeft, matchedRight);
+  
+  return {
+    matchedVolume,
+    matchedLeft,
+    matchedRight,
+    carryForwardLeft: leftLegPV - (matchedVolume === matchedLeft ? matchedVolume : matchedVolume * 2),
+    carryForwardRight: rightLegPV - (matchedVolume === matchedRight ? matchedVolume : matchedVolume * 2),
+  };
+};
+
+/**
  * Calculate binary commission
- * Only if binary is activated (directCount >= 10)
- * Commission = weakerLegPV * (bonusPercent / 100)
+ * Activation based on leg ratio (1:2 or 2:1)
+ * Uses 1:2 Matching Rule for commission calculation
+ * Commission = matchedVolume * (bonusPercent / 100)
  */
 export const calculateBinaryCommission = (
-  directCount,
+  leftLegCount,
+  rightLegCount,
   leftLegPV,
   rightLegPV,
   totalActiveAffiliates
 ) => {
-  // Check if binary is activated
-  if (!isBinaryActivated(directCount)) {
+  // Always calculate rank based on totalActiveAffiliates
+  const rank = calculateBinaryRank(totalActiveAffiliates);
+  
+  // Check if binary commission is activated (1:2 or 2:1 ratio)
+  const activated = isBinaryActivated(leftLegCount, rightLegCount);
+  
+  if (!activated) {
     return {
       activated: false,
       commission: 0,
-      rank: "NONE",
-      bonusPercent: 0,
+      rank: rank.name,
+      bonusPercent: rank.bonusPercent,
+      matchedVolume: 0,
       weakerLegPV: 0,
-      message: "Binary bonus not activated. Need 10+ direct referrals.",
+      leftLegPV,
+      rightLegPV,
+      carryForwardLeft: leftLegPV,
+      carryForwardRight: rightLegPV,
+      totalActiveAffiliates,
+      message: "Binary commission not activated. Need 1:2 or 2:1 leg ratio.",
     };
   }
 
-  // Calculate rank and bonus percent
-  const rank = calculateBinaryRank(totalActiveAffiliates);
-  const weakerLegPV = calculateWeakerLegPV(leftLegPV, rightLegPV);
-
-  // Calculate commission
-  const commission = weakerLegPV * (rank.bonusPercent / 100);
+  // Calculate 1:2 matching
+  const matching = calculate1to2Matching(leftLegPV, rightLegPV);
+  
+  // Calculate commission based on matched volume
+  const commission = matching.matchedVolume * (rank.bonusPercent / 100);
 
   return {
     activated: true,
     commission: parseFloat(commission.toFixed(2)),
     rank: rank.name,
     bonusPercent: rank.bonusPercent,
-    weakerLegPV,
+    matchedVolume: matching.matchedVolume,
+    matchedLeft: matching.matchedLeft,
+    matchedRight: matching.matchedRight,
+    weakerLegPV: Math.min(leftLegPV, rightLegPV), // For backward compatibility
     leftLegPV,
     rightLegPV,
+    carryForwardLeft: matching.carryForwardLeft,
+    carryForwardRight: matching.carryForwardRight,
     totalActiveAffiliates,
-    message: `Binary bonus active. Rank: ${rank.name} (${rank.bonusPercent}%)`,
+    message: `Binary commission active. Matched: ${matching.matchedVolume.toFixed(2)} PV at ${rank.bonusPercent}% = $${commission.toFixed(2)}`,
   };
 };
 
@@ -217,6 +262,7 @@ export default {
   isBinaryActivated,
   calculateBinaryRank,
   calculateWeakerLegPV,
+  calculate1to2Matching,
   calculateBinaryCommission,
   getNextRankInfo,
   checkCompletionRatio,

@@ -1170,9 +1170,52 @@ export const checkMemberStatus = async (userId) => {
       };
     }
 
+    // Calculate current rank based on total active affiliates
+    const totalActiveAffiliates = teamMember.totalActiveAffiliates || 0;
+    const rankData = calculateBinaryRank(totalActiveAffiliates);
+    const calculatedRank = rankData.name; // rank object has 'name' property
+    
+    // Calculate PV dynamically based on leg counts
+    const leftLegCount = teamMember.leftLegCount || 0;
+    const rightLegCount = teamMember.rightLegCount || 0;
+    const leftLegPV = leftLegCount * 94.5;
+    const rightLegPV = rightLegCount * 94.5;
+    const weakerLegPV = Math.min(leftLegPV, rightLegPV);
+    
+    // Calculate 1:2 matching commission
+    const binaryCommission = calculateBinaryCommission(
+      leftLegCount,
+      rightLegCount,
+      leftLegPV,
+      rightLegPV,
+      totalActiveAffiliates
+    );
+    
+    // Check if current rank is higher than highest achieved
+    const rankHierarchy = ["NONE", "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR", "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD", "LUMINARY", "SOVEREIGN", "ZENITH"];
+    const currentRankIndex = rankHierarchy.indexOf(calculatedRank);
+    const highestRankIndex = rankHierarchy.indexOf(teamMember.highestRankAchieved || "NONE");
+    
+    let rankUpdated = false;
+    if (currentRankIndex > highestRankIndex) {
+      teamMember.binaryRank = calculatedRank;
+      teamMember.binaryBonusPercent = rankData.bonusPercent;
+      teamMember.highestRankAchieved = calculatedRank;
+      teamMember.highestRankAchievedDate = new Date();
+      await teamMember.save();
+      rankUpdated = true;
+      teamLogger.info(`Rank updated for userId ${userId}: ${calculatedRank} (${totalActiveAffiliates} affiliates)`);
+    } else {
+      // Update current rank even if not highest (user might have lost affiliates)
+      teamMember.binaryRank = calculatedRank;
+      teamMember.binaryBonusPercent = rankData.bonusPercent;
+      await teamMember.save();
+    }
+
     return {
       success: true,
       isTeamMember: true,
+      rankUpdated,
       data: {
         referralCode: teamMember.referralCode,
         level: teamMember.level,
@@ -1180,18 +1223,25 @@ export const checkMemberStatus = async (userId) => {
         totalDownline: teamMember.totalDownline,
         sponsorId: teamMember.sponsorId,
         hasJoinedTeam: !!teamMember.sponsorId,
-        // Binary rank data
+        // Binary rank data - now calculated dynamically
         binaryActivated: teamMember.binaryActivated || false,
-        binaryRank: teamMember.binaryRank || "NONE",
-        binaryBonusPercent: teamMember.binaryBonusPercent || 0,
-        totalActiveAffiliates: teamMember.totalActiveAffiliates || 0,
-        leftLegPV: teamMember.leftLegPV || 0,
-        rightLegPV: teamMember.rightLegPV || 0,
-        leftLegCount: teamMember.leftLegCount || 0,
-        rightLegCount: teamMember.rightLegCount || 0,
-        weakerLegPV: teamMember.weakerLegPV || 0,
-        binaryCommissionEarned: teamMember.binaryCommissionEarned || 0,
+        binaryRank: calculatedRank,
+        binaryBonusPercent: rankData.bonusPercent,
+        totalActiveAffiliates: totalActiveAffiliates,
+        leftLegPV: leftLegPV,
+        rightLegPV: rightLegPV,
+        leftLegCount: leftLegCount,
+        rightLegCount: rightLegCount,
+        weakerLegPV: weakerLegPV,
+        binaryCommissionEarned: binaryCommission.commission || 0,
+        // 1:2 Matching data
+        matchedVolume: binaryCommission.matchedVolume || 0,
+        matchedLeft: binaryCommission.matchedLeft || 0,
+        matchedRight: binaryCommission.matchedRight || 0,
+        carryForwardLeft: binaryCommission.carryForwardLeft || 0,
+        carryForwardRight: binaryCommission.carryForwardRight || 0,
         lastBinaryCalculation: teamMember.lastBinaryCalculation,
+        highestRankAchieved: teamMember.highestRankAchieved || "NONE",
       },
     };
   } catch (error) {
@@ -2347,12 +2397,19 @@ export const getReferralStats = async (userId) => {
     // Calculate binary rank information
     const directCount = member.directCount || 0;
     const totalActiveAffiliates = member.totalActiveAffiliates || totalTeam;
-    const leftLegPV = member.leftLegPV || 0;
-    const rightLegPV = member.rightLegPV || 0;
+    
+    // Get leg counts from database
+    const leftLegCount = member.leftLegCount || 0;
+    const rightLegCount = member.rightLegCount || 0;
+    
+    // Calculate PV for each leg (94.5 PV per subscription)
+    const leftLegPV = leftLegCount * 94.5;
+    const rightLegPV = rightLegCount * 94.5;
 
-    // Calculate binary bonus (only if directCount >= 10)
+    // Calculate binary bonus with correct parameters
     const binaryBonus = calculateBinaryCommission(
-      directCount,
+      leftLegCount,
+      rightLegCount,
       leftLegPV,
       rightLegPV,
       totalActiveAffiliates
@@ -2402,6 +2459,16 @@ export const getReferralStats = async (userId) => {
         weakerLegPV: binaryBonus.weakerLegPV,
         commission: binaryBonus.commission,
         totalActiveAffiliates: totalActiveAffiliates,
+        leftLegCount: leftLegCount,
+        rightLegCount: rightLegCount,
+        leftLegPV: leftLegPV,
+        rightLegPV: rightLegPV,
+        // 1:2 Matching data
+        matchedVolume: binaryBonus.matchedVolume || 0,
+        matchedLeft: binaryBonus.matchedLeft || 0,
+        matchedRight: binaryBonus.matchedRight || 0,
+        carryForwardLeft: binaryBonus.carryForwardLeft || 0,
+        carryForwardRight: binaryBonus.carryForwardRight || 0,
         nextRank: nextRank.nextRank || null,
         nextBonusPercent: nextRank.nextBonusPercent || null,
         affiliatesNeeded: nextRank.affiliatesNeeded || 0,
@@ -2804,14 +2871,20 @@ export const getAvailableRewards = async (userId) => {
       };
     }
 
+    // Calculate current rank based on totalActiveAffiliates
+    const totalActiveAffiliates = member.totalActiveAffiliates || 0;
+    const rankData = calculateBinaryRank(totalActiveAffiliates);
+    const currentRank = rankData.name; // rank object has 'name' property
+
     // Use highest rank achieved (not current rank)
     const highestRank = member.highestRankAchieved || "NONE";
     
     if (highestRank === "NONE") {
       return {
         success: true,
-        currentRank: member.binaryRank || "NONE",
+        currentRank: currentRank,
         highestRank: "NONE",
+        totalActiveAffiliates: totalActiveAffiliates,
         message: "No rank achieved yet. Build your team to earn ranks!",
         availableRewards: [],
         claimedRewards: [],
@@ -2829,8 +2902,9 @@ export const getAvailableRewards = async (userId) => {
     if (highestRankIndex === -1) {
       return {
         success: true,
-        currentRank: member.binaryRank || "NONE",
+        currentRank: currentRank,
         highestRank,
+        totalActiveAffiliates: totalActiveAffiliates,
         availableRewards: [],
         claimedRewards: [],
       };
@@ -2866,17 +2940,18 @@ export const getAvailableRewards = async (userId) => {
 
     teamLogger.success("Available rewards retrieved", {
       userId,
-      currentRank: member.binaryRank,
+      currentRank,
       highestRank,
+      totalActiveAffiliates: totalActiveAffiliates,
       availableCount: availableRewardsWithDetails.length,
       redeemedCount: redeemedRewards.length,
     });
 
     return {
       success: true,
-      currentRank: member.binaryRank || "NONE",
+      currentRank: currentRank,
       highestRank,
-      totalActiveAffiliates: member.totalActiveAffiliates || 0,
+      totalActiveAffiliates: totalActiveAffiliates,
       availableRewards: availableRewardsWithDetails,
       claimedRewards: redeemedRewards.map(r => ({
         rank: r.rank,

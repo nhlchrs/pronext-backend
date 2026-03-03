@@ -41,10 +41,18 @@ export const generateBinaryCommissionForUser = async (userId) => {
     }
 
     // Calculate binary commission based on rank and PV
+    const leftLegCount = teamMember.leftLegCount || 0;
+    const rightLegCount = teamMember.rightLegCount || 0;
+    const leftLegPV = leftLegCount * 94.5; // Calculate PV dynamically
+    const rightLegPV = rightLegCount * 94.5;
+    const totalActiveAffiliates = teamMember.totalActiveAffiliates || 0;
+    
     const binaryData = calculateBinaryCommission(
-      teamMember.leftLegPV || 0,
-      teamMember.rightLegPV || 0,
-      teamMember.directCount || 0
+      leftLegCount,
+      rightLegCount,
+      leftLegPV,
+      rightLegPV,
+      totalActiveAffiliates
     );
 
     if (!binaryData.activated || binaryData.commission <= 0) {
