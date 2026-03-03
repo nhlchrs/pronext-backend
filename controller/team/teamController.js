@@ -1880,6 +1880,24 @@ export const getMyReferralCode = async (userId) => {
       }
     }
 
+    // Calculate team position breakdown
+    let mainTeamCount = 0;
+    let leftTeamCount = 0;
+    let rightTeamCount = 0;
+
+    // Get all direct team members and count by position
+    if (teamMember.teamMembers && teamMember.teamMembers.length > 0) {
+      const directMembers = await TeamMember.find({
+        userId: { $in: teamMember.teamMembers }
+      }).select('position');
+
+      directMembers.forEach(member => {
+        if (member.position === 'main') mainTeamCount++;
+        else if (member.position === 'left') leftTeamCount++;
+        else if (member.position === 'right') rightTeamCount++;
+      });
+    }
+
     teamLogger.success("Referral code retrieved", { userId, code: teamMember.referralCode });
 
     return {
@@ -1896,13 +1914,17 @@ export const getMyReferralCode = async (userId) => {
           email: teamMember.userId.email,
         },
         stats: {
-          directCount: teamMember.directCount,
-          totalDownline: teamMember.totalDownline,
-          level: teamMember.level,
-          totalEarnings: teamMember.totalEarnings,
+          directCount: teamMember.directCount || 0,
+          totalDownline: teamMember.totalDownline || 0,
+          level: teamMember.level || 0,
+          totalEarnings: teamMember.totalEarnings || 0,
           leftLegCount: teamMember.leftLegCount || 0,
           rightLegCount: teamMember.rightLegCount || 0,
           binaryActivated: teamMember.binaryActivated || false,
+          userPosition: teamMember.position || 'main',
+          mainTeamCount,
+          leftTeamCount,
+          rightTeamCount,
         },
         sponsor: sponsorInfo,
       },
