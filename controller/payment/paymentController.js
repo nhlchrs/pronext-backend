@@ -497,7 +497,28 @@ export const handleIPNCallback = async (req, res) => {
         expiryDate: updatedUser?.subscriptionExpiryDate,
       });
 
-      // Generate commissions for referrers and upline
+      // ⚡ Add PV to binary tree FIRST (update lpro/rpro)
+      const { TeamMember } = await import('../../models/teamModel.js');
+      const buyer = await TeamMember.findOne({ userId: paymentRecord.userId });
+      
+      if (buyer && buyer.sponsorId && buyer.position !== 'main') {
+        try {
+          const { addPVToLeg } = await import('../../helpers/binaryMatchingService.js');
+          const pvAmount = 94.5; // Standard PV for $135 package
+          await addPVToLeg(buyer.sponsorId, buyer.position, pvAmount);
+          
+          paymentLogger.success("✅ PV added to binary tree (lpro/rpro updated)", {
+            sponsorId: buyer.sponsorId,
+            position: buyer.position,
+            pvAmount,
+            userId: paymentRecord.userId
+          });
+        } catch (pvError) {
+          paymentLogger.error("⚠️ Error adding PV to binary tree", pvError);
+        }
+      }
+
+      // 💰 Generate commissions for referrers and upline
       try {
         const commissions = await generatePurchaseCommissions(
           paymentRecord.userId,
@@ -513,28 +534,6 @@ export const handleIPNCallback = async (req, res) => {
       } catch (commissionError) {
         paymentLogger.error("⚠️ Error generating commissions", commissionError);
         // Don't fail the webhook if commission generation fails
-      }
-
-      // Add PV to binary tree (94.5 PV per $135 subscription)
-      try {
-        const { addPVToLeg } = await import('../../helpers/binaryMatchingService.js');
-        const TeamMember = (await import('../../models/teamModel.js')).default;
-        
-        const buyer = await TeamMember.findOne({ userId: paymentRecord.userId });
-        if (buyer && buyer.sponsorId && buyer.position !== 'main') {
-          const pvAmount = 94.5; // Standard PV for $135 package
-          await addPVToLeg(buyer.sponsorId, buyer.position, pvAmount);
-          
-          paymentLogger.success("✅ PV added to binary tree", {
-            sponsorId: buyer.sponsorId,
-            position: buyer.position,
-            pvAmount,
-            userId: paymentRecord.userId
-          });
-        }
-      } catch (pvError) {
-        paymentLogger.error("⚠️ Error adding PV to binary tree", pvError);
-        // Don't fail the webhook if PV addition fails
       }
 
       // TODO: Send email notification to user about subscription activation

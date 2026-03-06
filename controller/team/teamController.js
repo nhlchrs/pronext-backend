@@ -1873,6 +1873,76 @@ export const applyReferralCode = async (userId, code) => {
       await referrerMember.save();
     }
 
+    // ⚡ ADD PV TO BINARY TREE (lpro/rpro) if left or right position
+    if (codeType === 'left' || codeType === 'right') {
+      try {
+        const { addPVToLeg } = await import('../../helpers/binaryMatchingService.js');
+        const pvAmount = 94.5; // Standard PV per member
+        // sponsorId in database stores User _id, so referrerMember.userId is the User _id
+        await addPVToLeg(referrerMember.userId, codeType, pvAmount);
+        
+        teamLogger.success("✅ PV added to binary tree", {
+          sponsorUserId: referrerMember.userId,
+          position: codeType,
+          pvAmount,
+          newMemberId: userId
+        });
+      } catch (pvError) {
+        teamLogger.error("⚠️ Error adding PV to binary tree", pvError);
+        // Don't fail the join process if PV addition fails
+      }
+    }
+
+    // 💰 GENERATE COMMISSIONS (Direct Bonus, Level Income, etc.)
+    console.log('\n🎯 [JOIN] Starting commission generation...');
+    console.log('   New Member:', userId);
+    console.log('   Sponsor:', referrerMember.userId);
+    console.log('   Position:', codeType);
+    
+    try {
+      const { generateDirectBonusOnJoin, generateLevelIncomesOnJoin } = await import('../../helpers/commissionService.js');
+      const PACKAGE_PRICE = 135;
+      
+      console.log('✅ Commission service imported successfully');
+      
+      // Generate Direct Bonus for sponsor
+      console.log('💰 Generating direct bonus...');
+      const directBonus = await generateDirectBonusOnJoin(referrerMember, userId, PACKAGE_PRICE);
+      if (directBonus) {
+        console.log('✅ DIRECT BONUS CREATED:', {
+          sponsorId: referrerMember.userId,
+          amount: directBonus.netAmount,
+          commissionId: directBonus._id
+        });
+        teamLogger.success("💰 Direct bonus generated", {
+          sponsorId: referrerMember.userId,
+          newMemberId: userId,
+          amount: directBonus.netAmount
+        });
+      } else {
+        console.log('⚠️  No direct bonus created (might not qualify)');
+      }
+      
+      // Generate Level Income for upline
+      console.log('💰 Generating level income...');
+      const levelIncomes = await generateLevelIncomesOnJoin(referrerMember.userId, userId, PACKAGE_PRICE);
+      if (levelIncomes && levelIncomes.length > 0) {
+        console.log('✅ LEVEL INCOMES CREATED:', levelIncomes.length);
+        teamLogger.success("💰 Level incomes generated", {
+          count: levelIncomes.length,
+          totalAmount: levelIncomes.reduce((sum, c) => sum + c.netAmount, 0)
+        });
+      } else {
+        console.log('ℹ️  No level incomes created (upline might not qualify)');
+      }
+      
+      console.log('✅ Commission generation complete!\n');
+    } catch (commissionError) {
+      console.error('❌ ERROR GENERATING COMMISSIONS:', commissionError);
+      teamLogger.error("⚠️ Error generating commissions", commissionError);
+      // Don't fail the join process if commission generation fails
+    }
+
     teamLogger.success("Referral code applied successfully", {
       code,
       userId,

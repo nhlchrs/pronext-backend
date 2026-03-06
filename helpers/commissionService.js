@@ -472,6 +472,137 @@ export const calculateEstimatedEarnings = async (userId) => {
   }
 };
 
+/**
+ * Generate Direct Bonus when a user joins a team (at join time, not payment time)
+ * This creates commission immediately when team structure is formed
+ */
+export const generateDirectBonusOnJoin = async (sponsorTeam, newMemberId, packageAmount = 135) => {
+  try {
+    if (!sponsorTeam || !sponsorTeam.userId) return null;
+
+    // Get new member info
+    const newMember = await User.findById(newMemberId);
+    if (!newMember) return null;
+
+    // Get total direct count for sponsor (all-time)
+    const totalDirects = await TeamMember.countDocuments({
+      sponsorId: sponsorTeam.userId,
+    });
+
+    // Calculate direct bonus based on total direct count slab
+    const bonusPercentage = getDirectBonusPercentage(totalDirects);
+    const grossAmount = (packageAmount * bonusPercentage) / 100;
+
+    if (grossAmount <= 0) return null;
+
+    const now = new Date();
+    const commission = await Commission.create({
+      userId: sponsorTeam.userId,
+      referrerId: newMemberId,
+      transactionId: null, // No transaction yet - commission generated at join time
+      commissionType: "direct_bonus",
+      level: 1, // Direct referral
+      grossAmount,
+      taxPercentage: 0,
+      taxAmount: 0,
+      netAmount: grossAmount,
+      status: "pending",
+      earningDate: now,
+      period: {
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+      },
+      description: `Direct bonus for ${newMember.fname} ${newMember.lname} joining team (${totalDirects} directs - ${bonusPercentage}%)`,
+      metadata: {
+        totalDirectCount: totalDirects,
+        bonusPercentage: bonusPercentage,
+        referralName: `${newMember.fname} ${newMember.lname}`,
+        generatedAtJoin: true, // Flag to indicate this was generated at join time
+      },
+    });
+
+    console.log('💰 Direct bonus generated at join:', {
+      sponsorId: sponsorTeam.userId,
+      newMemberId,
+      amount: grossAmount,
+      totalDirects
+    });
+
+    return commission;
+  } catch (error) {
+    console.error("Error generating direct bonus on join:", error);
+    return null;
+  }
+};
+
+/**
+ * Generate Level Income commissions when a user joins (at join time, not payment time)
+ * Level income is paid to upline members who have 10+ directs
+ */
+export const generateLevelIncomesOnJoin = async (sponsorId, newMemberId, packageAmount = 135) => {
+  try {
+    const commissions = [];
+    let currentSponsor = await TeamMember.findOne({ userId: sponsorId });
+    let level = 1;
+
+    while (currentSponsor && level <= 4) {
+      // Check if sponsor qualifies for level income (needs 10+ directs)
+      const directCount = await TeamMember.countDocuments({
+        sponsorId: currentSponsor.userId,
+      });
+
+      if (directCount >= 10) {
+        // Calculate level income
+        const levelData = BONUS_STRUCTURE.levelIncome[level];
+        const grossAmount = (packageAmount * levelData.percentage) / 100;
+
+        if (grossAmount > 0) {
+          const commission = await Commission.create({
+            userId: currentSponsor.userId,
+            referrerId: newMemberId,
+            transactionId: null, // No transaction yet - commission generated at join time
+            commissionType: "level_income",
+            level,
+            grossAmount,
+            taxPercentage: 0,
+            taxAmount: 0,
+            netAmount: grossAmount,
+            status: "pending",
+            earningDate: new Date(),
+            period: {
+              month: new Date().getMonth() + 1,
+              year: new Date().getFullYear(),
+            },
+            description: `Level ${level} income from new team member join`,
+            metadata: {
+              generatedAtJoin: true, // Flag to indicate this was generated at join time
+            },
+          });
+
+          commissions.push(commission);
+          console.log(`💰 Level ${level} income generated:`, {
+            userId: currentSponsor.userId,
+            amount: grossAmount
+          });
+        }
+      }
+
+      // Move to next level upline
+      if (currentSponsor.sponsorId) {
+        currentSponsor = await TeamMember.findOne({ userId: currentSponsor.sponsorId });
+        level++;
+      } else {
+        break;
+      }
+    }
+
+    return commissions;
+  } catch (error) {
+    console.error("Error generating level incomes on join:", error);
+    return [];
+  }
+};
+
 export default {
   generatePurchaseCommissions,
   generateDirectBonus,
@@ -485,4 +616,6 @@ export default {
   getTotalPendingAmount,
   getCommissionBreakdown,
   calculateEstimatedEarnings,
+  generateDirectBonusOnJoin,
+  generateLevelIncomesOnJoin,
 };
