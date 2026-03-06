@@ -484,16 +484,24 @@ export const generateDirectBonusOnJoin = async (sponsorTeam, newMemberId, packag
     const newMember = await User.findById(newMemberId);
     if (!newMember) return null;
 
-    // Get total direct count for sponsor (all-time)
-    const totalDirects = await TeamMember.countDocuments({
+    // Use the directCount that was JUST updated in applyReferralCode
+    // This is more accurate than querying the database
+    const totalDirects = sponsorTeam.directCount || 0;
+    
+    console.log('📊 Direct bonus calculation:', {
       sponsorId: sponsorTeam.userId,
+      directCount: totalDirects,
+      newMemberName: `${newMember.fname} ${newMember.lname}`
     });
 
     // Calculate direct bonus based on total direct count slab
     const bonusPercentage = getDirectBonusPercentage(totalDirects);
     const grossAmount = (packageAmount * bonusPercentage) / 100;
 
-    if (grossAmount <= 0) return null;
+    if (grossAmount <= 0) {
+      console.log('⚠️  No direct bonus: amount is 0');
+      return null;
+    }
 
     const now = new Date();
     const commission = await Commission.create({
@@ -521,11 +529,14 @@ export const generateDirectBonusOnJoin = async (sponsorTeam, newMemberId, packag
       },
     });
 
-    console.log('💰 Direct bonus generated at join:', {
+    console.log('💰 Direct bonus generated and SAVED TO DATABASE:', {
+      commissionId: commission._id,
       sponsorId: sponsorTeam.userId,
       newMemberId,
       amount: grossAmount,
-      totalDirects
+      totalDirects,
+      bonusPercentage,
+      status: commission.status
     });
 
     return commission;
@@ -545,10 +556,17 @@ export const generateLevelIncomesOnJoin = async (sponsorId, newMemberId, package
     let currentSponsor = await TeamMember.findOne({ userId: sponsorId });
     let level = 1;
 
+    // Get new member info for notifications
+    const newMember = await User.findById(newMemberId);
+
     while (currentSponsor && level <= 4) {
-      // Check if sponsor qualifies for level income (needs 10+ directs)
-      const directCount = await TeamMember.countDocuments({
-        sponsorId: currentSponsor.userId,
+      // Use the directCount field directly (more accurate than counting)
+      const directCount = currentSponsor.directCount || 0;
+      
+      console.log(`📊 Level ${level} check:`, {
+        userId: currentSponsor.userId,
+        directCount,
+        qualified: directCount >= 10
       });
 
       if (directCount >= 10) {
@@ -580,16 +598,20 @@ export const generateLevelIncomesOnJoin = async (sponsorId, newMemberId, package
           });
 
           commissions.push(commission);
-          console.log(`💰 Level ${level} income generated:`, {
+          console.log(`💰 Level ${level} income SAVED TO DATABASE:`, {
+            commissionId: commission._id,
             userId: currentSponsor.userId,
-            amount: grossAmount
+            amount: grossAmount,
+            percentage: levelData.percentage,
+            status: commission.status
           });
         }
       }
 
       // Move to next level upline
       if (currentSponsor.sponsorId) {
-        currentSponsor = await TeamMember.findOne({ userId: currentSponsor.sponsorId });
+        // sponsorId is a TeamMember._id, so we need to find by _id
+        currentSponsor = await TeamMember.findById(currentSponsor.sponsorId);
         level++;
       } else {
         break;

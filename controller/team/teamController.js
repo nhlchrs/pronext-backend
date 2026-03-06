@@ -558,6 +558,90 @@ export const setSponsorWithBinaryPosition = async (userId, referralCode) => {
     // Update sponsor's level based on new directCount
     await updateUserLevel(sponsor.userId);
 
+    // 💰 GENERATE COMMISSIONS (Direct Bonus, Level Income)
+    console.log('\n' + '='.repeat(80));
+    console.log('🎯 [BINARY JOIN] COMMISSION GENERATION STARTING');
+    console.log('='.repeat(80));
+    console.log('   New Member ID:', userId);
+    console.log('   Sponsor ID:', sponsor.userId);
+    console.log('   Sponsor DirectCount:', sponsor.directCount);
+    console.log('   Position:', position);
+    console.log('   Referral Code:', referralCode);
+    console.log('='.repeat(80) + '\n');
+
+    try {
+      const { generateDirectBonusOnJoin, generateLevelIncomesOnJoin } = await import('../../helpers/commissionService.js');
+      const PACKAGE_PRICE = 135;
+
+      console.log('✅ Commission service imported successfully');
+
+      // Generate Direct Bonus for sponsor
+      console.log('\n💰 [STEP 1/2] Generating direct bonus for sponsor...');
+      console.log('   Sponsor directCount:', sponsor.directCount);
+      console.log('   Expected percentage:', sponsor.directCount >= 10 ? '33.4%' : sponsor.directCount >= 7 ? '25%' : sponsor.directCount >= 4 ? '16.68%' : '8.34%');
+
+      const directBonus = await generateDirectBonusOnJoin(sponsor, userId, PACKAGE_PRICE);
+
+      if (directBonus) {
+        console.log('\n✅ ✅ ✅ DIRECT BONUS SUCCESSFULLY CREATED! ✅ ✅ ✅');
+        console.log('   Commission ID:', directBonus._id);
+        console.log('   Sponsor:', sponsor.userId);
+        console.log('   Amount: $' + directBonus.netAmount.toFixed(2));
+        console.log('   Percentage:', directBonus.metadata?.bonusPercentage + '%');
+        console.log('   Status:', directBonus.status);
+        console.log('   Description:', directBonus.description);
+
+        teamLogger.success("💰 Direct bonus generated", {
+          sponsorId: sponsor.userId,
+          newMemberId: userId,
+          amount: directBonus.netAmount,
+          commissionId: directBonus._id
+        });
+      } else {
+        console.log('\n⚠️  ⚠️  ⚠️  WARNING: No direct bonus created');
+        console.log('   Reason: Check logs above for details');
+        console.log('   Sponsor directCount:', sponsor.directCount);
+      }
+
+      // Generate Level Income for upline
+      console.log('\n💰 [STEP 2/2] Generating level income for upline...');
+      const levelIncomes = await generateLevelIncomesOnJoin(sponsor.userId, userId, PACKAGE_PRICE);
+
+      if (levelIncomes && levelIncomes.length > 0) {
+        console.log('\n✅ LEVEL INCOMES CREATED:', levelIncomes.length, 'commission(s)');
+        levelIncomes.forEach((income, idx) => {
+          console.log(`   Level ${income.level}: $${income.netAmount.toFixed(2)} (Commission ID: ${income._id})`);
+        });
+
+        teamLogger.success("💰 Level incomes generated", {
+          count: levelIncomes.length,
+          totalAmount: levelIncomes.reduce((sum, c) => sum + c.netAmount, 0)
+        });
+      } else {
+        console.log('\nℹ️  No level incomes created (upline might not qualify or no upline exists)');
+      }
+
+      console.log('\n' + '='.repeat(80));
+      console.log('✅ COMMISSION GENERATION COMPLETE!');
+      console.log('   Direct Bonus:', directBonus ? `$${directBonus.netAmount.toFixed(2)}` : 'None');
+      console.log('   Level Incomes:', levelIncomes?.length || 0, 'commission(s)');
+      console.log('='.repeat(80) + '\n');
+
+    } catch (commissionError) {
+      console.log('\n' + '='.repeat(80));
+      console.error('❌ ❌ ❌ ERROR GENERATING COMMISSIONS ❌ ❌ ❌');
+      console.error('Error Name:', commissionError.name);
+      console.error('Error Message:', commissionError.message);
+      console.error('Error Stack:', commissionError.stack);
+      console.log('='.repeat(80) + '\n');
+
+      teamLogger.error("⚠️ Error generating commissions", {
+        error: commissionError.message,
+        stack: commissionError.stack
+      });
+      // Don't fail the join process if commission generation fails
+    }
+
     teamLogger.success("Sponsor assigned with binary position", {
       userId,
       sponsorId: sponsor.userId,
@@ -1844,9 +1928,18 @@ export const applyReferralCode = async (userId, code) => {
     }
 
     // Add user to referrer's team (prevent duplicates)
+    let shouldGenerateCommission = false;
     if (!referrerMember.teamMembers.some(id => id.toString() === userId.toString())) {
       referrerMember.teamMembers.push(userId);
       referrerMember.directCount = referrerMember.teamMembers.length;
+      shouldGenerateCommission = true; // Only generate commission for new joins
+      
+      console.log('\n📝 [JOIN] Adding new team member:');
+      console.log('   Sponsor:', referrerMember.userId);
+      console.log('   New DirectCount:', referrerMember.directCount);
+      console.log('   New Member:', userId);
+    } else {
+      console.log('\n⚠️  [JOIN] User already in team, skipping commission generation');
     }
 
     // Create referral record
@@ -1864,6 +1957,8 @@ export const applyReferralCode = async (userId, code) => {
       referrerMember.save(),
       referral.save(),
     ]);
+    
+    console.log('✅ [JOIN] Team member, referrer, and referral records saved to database');
 
     // Update referrer's level if needed
     if (referrerMember.directCount >= 10 && !referrerMember.levelQualified) {
@@ -1894,10 +1989,20 @@ export const applyReferralCode = async (userId, code) => {
     }
 
     // 💰 GENERATE COMMISSIONS (Direct Bonus, Level Income, etc.)
-    console.log('\n🎯 [JOIN] Starting commission generation...');
-    console.log('   New Member:', userId);
-    console.log('   Sponsor:', referrerMember.userId);
+    if (!shouldGenerateCommission) {
+      console.log('\n' + '='.repeat(80));
+      console.log('⏭️  [JOIN] SKIPPING COMMISSION GENERATION (duplicate join)');
+      console.log('='.repeat(80) + '\n');
+    } else {
+      console.log('\n' + '='.repeat(80));
+      console.log('🎯 [JOIN] COMMISSION GENERATION STARTING');
+      console.log('='.repeat(80));
+    console.log('   New Member ID:', userId);
+    console.log('   New Member Name:', user.fname, user.lname);
+    console.log('   Sponsor ID:', referrerMember.userId);
+    console.log('   Sponsor DirectCount:', referrerMember.directCount);
     console.log('   Position:', codeType);
+    console.log('='.repeat(80) + '\n');
     
     try {
       const { generateDirectBonusOnJoin, generateLevelIncomesOnJoin } = await import('../../helpers/commissionService.js');
@@ -1906,42 +2011,72 @@ export const applyReferralCode = async (userId, code) => {
       console.log('✅ Commission service imported successfully');
       
       // Generate Direct Bonus for sponsor
-      console.log('💰 Generating direct bonus...');
+      console.log('\n💰 [STEP 1/2] Generating direct bonus for sponsor...');
+      console.log('   Sponsor directCount:', referrerMember.directCount);
+      console.log('   Expected percentage:', referrerMember.directCount >= 10 ? '33.4%' : referrerMember.directCount >= 7 ? '25%' : referrerMember.directCount >= 4 ? '16.68%' : '8.34%');
+      
       const directBonus = await generateDirectBonusOnJoin(referrerMember, userId, PACKAGE_PRICE);
+      
       if (directBonus) {
-        console.log('✅ DIRECT BONUS CREATED:', {
-          sponsorId: referrerMember.userId,
-          amount: directBonus.netAmount,
-          commissionId: directBonus._id
-        });
+        console.log('\n✅ ✅ ✅ DIRECT BONUS SUCCESSFULLY CREATED! ✅ ✅ ✅');
+        console.log('   Commission ID:', directBonus._id);
+        console.log('   Sponsor:', referrerMember.userId);
+        console.log('   Amount: $' + directBonus.netAmount.toFixed(2));
+        console.log('   Percentage:', directBonus.metadata?.bonusPercentage + '%');
+        console.log('   Status:', directBonus.status);
+        console.log('   Description:', directBonus.description);
+        
         teamLogger.success("💰 Direct bonus generated", {
           sponsorId: referrerMember.userId,
           newMemberId: userId,
-          amount: directBonus.netAmount
+          amount: directBonus.netAmount,
+          commissionId: directBonus._id
         });
       } else {
-        console.log('⚠️  No direct bonus created (might not qualify)');
+        console.log('\n⚠️  ⚠️  ⚠️  WARNING: No direct bonus created');
+        console.log('   Reason: Check logs above for details');
+        console.log('   Sponsor directCount:', referrerMember.directCount);
       }
       
       // Generate Level Income for upline
-      console.log('💰 Generating level income...');
+      console.log('\n💰 [STEP 2/2] Generating level income for upline...');
       const levelIncomes = await generateLevelIncomesOnJoin(referrerMember.userId, userId, PACKAGE_PRICE);
+      
       if (levelIncomes && levelIncomes.length > 0) {
-        console.log('✅ LEVEL INCOMES CREATED:', levelIncomes.length);
+        console.log('\n✅ LEVEL INCOMES CREATED:', levelIncomes.length, 'commission(s)');
+        levelIncomes.forEach((income, idx) => {
+          console.log(`   Level ${income.level}: $${income.netAmount.toFixed(2)} (Commission ID: ${income._id})`);
+        });
+        
         teamLogger.success("💰 Level incomes generated", {
           count: levelIncomes.length,
           totalAmount: levelIncomes.reduce((sum, c) => sum + c.netAmount, 0)
         });
       } else {
-        console.log('ℹ️  No level incomes created (upline might not qualify)');
+        console.log('\nℹ️  No level incomes created (upline might not qualify or no upline exists)');
       }
       
-      console.log('✅ Commission generation complete!\n');
+      console.log('\n' + '='.repeat(80));
+      console.log('✅ COMMISSION GENERATION COMPLETE!');
+      console.log('   Direct Bonus:', directBonus ? `$${directBonus.netAmount.toFixed(2)}` : 'None');
+      console.log('   Level Incomes:', levelIncomes?.length || 0, 'commission(s)');
+      console.log('='.repeat(80) + '\n');
+      
     } catch (commissionError) {
-      console.error('❌ ERROR GENERATING COMMISSIONS:', commissionError);
-      teamLogger.error("⚠️ Error generating commissions", commissionError);
+      console.log('\n' + '='.repeat(80));
+      console.error('❌ ❌ ❌ ERROR GENERATING COMMISSIONS ❌ ❌ ❌');
+      console.error('Error Name:', commissionError.name);
+      console.error('Error Message:', commissionError.message);
+      console.error('Error Stack:', commissionError.stack);
+      console.log('='.repeat(80) + '\n');
+      
+      teamLogger.error("⚠️ Error generating commissions", {
+        error: commissionError.message,
+        stack: commissionError.stack
+      });
       // Don't fail the join process if commission generation fails
     }
+    } // End of commission generation if-else block
 
     teamLogger.success("Referral code applied successfully", {
       code,
