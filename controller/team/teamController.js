@@ -1968,6 +1968,27 @@ export const applyReferralCode = async (userId, code) => {
       await referrerMember.save();
     }
 
+    // ⚡ UPDATE LEG COUNTS FOR ENTIRE UPLINE (lpro/rpro) if left or right position
+    if (codeType === 'left' || codeType === 'right') {
+      try {
+        console.log('\n🔄 [LEG COUNT UPDATE] Starting upline leg count update...');
+        console.log('   New Member ID:', teamMember._id);
+        console.log('   Position:', codeType);
+        
+        const legCountResult = await updateUplineLegCounts(teamMember._id);
+        
+        if (legCountResult.success) {
+          console.log(`✅ [LEG COUNT UPDATE] Updated ${legCountResult.updatedCount} upline members`);
+        } else {
+          console.log('⚠️ [LEG COUNT UPDATE] Failed:', legCountResult.message);
+        }
+      } catch (legCountError) {
+        console.error('❌ [LEG COUNT UPDATE] Error:', legCountError.message);
+        teamLogger.error("⚠️ Error updating upline leg counts", legCountError);
+        // Don't fail the join process if leg count update fails
+      }
+    }
+
     // ⚡ ADD PV TO BINARY TREE (lpro/rpro) if left or right position
     if (codeType === 'left' || codeType === 'right') {
       try {
@@ -2530,6 +2551,302 @@ export const getUserDownlineOnly = async (userId) => {
   }
 };
 
+// Get COMPLETE downline (ALL children: LPRO/RPRO/Main) for a user
+// Returns SAME FORMAT as my-downline but includes ALL children from sponsorId
+export const getUserBinaryDownline = async (userId) => {
+  try {
+    teamLogger.start("Getting user's complete downline (including LPRO/RPRO)", { userId });
+
+    const currentMember = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email");
+
+    if (!currentMember) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Build complete tree recursively - includes ALL children (not just teamMembers array)
+    const buildCompleteDownline = async (memberIdOrTeamMember, currentDepth = 0, maxDepth = 15) => {
+      if (currentDepth >= maxDepth) return null;
+
+      // If we received a TeamMember object, use it directly; otherwise query by _id
+      let member;
+      if (typeof memberIdOrTeamMember === 'object' && memberIdOrTeamMember.userId) {
+        member = memberIdOrTeamMember;
+      } else {
+        member = await TeamMember.findById(memberIdOrTeamMember)
+          .populate("userId", "fname lname email");
+      }
+
+      if (!member) return null;
+
+      // ✅ FIND ALL CHILDREN - using sponsorId (includes LPRO/RPRO/Main)
+      // This is the KEY difference from old API!
+      const allChildren = await TeamMember.find({ 
+        sponsorId: member._id
+        // No position filter - get ALL positions (left, right, main)
+      }).populate("userId", "fname lname email");
+
+      // Recursively build each child's downline
+      const childrenTree = await Promise.all(
+        allChildren.map(child => buildCompleteDownline(child, currentDepth + 1, maxDepth))
+      );
+
+      return {
+        _id: member._id,
+        userId: member.userId,
+        referralCode: member.referralCode,
+        position: member.position || "main", // ✅ Shows if joined via main/left/right (LPRO/RPRO)
+        directCount: member.directCount || 0,
+        leftLegCount: member.leftLegCount || 0,  // ✅ Total descendants in left leg
+        rightLegCount: member.rightLegCount || 0, // ✅ Total descendants in right leg
+        leftLegPV: member.leftLegPV || 0,        // ✅ Total PV in left leg
+        rightLegPV: member.rightLegPV || 0,      // ✅ Total PV in right leg
+        level: member.level,
+        totalEarnings: member.totalEarnings,
+        totalDownline: member.totalDownline || 0,
+        teamMembers: childrenTree.filter(child => child !== null), // Same format as old API!
+        isCurrentUser: currentDepth === 0,
+      };
+    };
+
+    // Start building from current user
+    const hierarchy = await buildCompleteDownline(currentMember, 0, 15);
+
+    teamLogger.success("User's complete downline retrieved (including LPRO/RPRO)", { 
+      userId,
+      totalChildren: hierarchy.teamMembers.length
+    });
+
+    return {
+      success: true,
+      data: {
+        hierarchy,
+        currentUserId: userId.toString(),
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting user's complete downline", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+// Get simple team members list with their directCount and position
+// Now includes recursive team member details for each member
+export const getSimpleTeamMembersList = async (userId) => {
+  try {
+    teamLogger.start("Getting simple team members list with recursive details", { userId });
+
+    const member = await TeamMember.findOne({ userId });
+
+    if (!member) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    const teamMembersArray = member.teamMembers || [];
+
+    if (teamMembersArray.length === 0) {
+      return {
+        success: true,
+        data: {
+          directCount: 0,
+          leftProCount: 0,
+          rightProCount: 0,
+          mainCount: 0,
+          totalPV: 0,
+          leftProPV: 0,
+          rightProPV: 0,
+          mainPV: 0,
+          weakerLegPV: 0,
+          matchedVolume: 0,
+          commissionAmount: 0,
+          carryForwardLeft: 0,
+          carryForwardRight: 0,
+          members: [],
+          binaryRank: member.binaryRank || "NONE",
+          binaryBonusPercent: member.binaryBonusPercent || 0,
+          highestRankAchieved: member.highestRankAchieved || "NONE",
+        },
+      };
+    }
+
+    const teamMemberRecords = await TeamMember.find({
+      userId: { $in: teamMembersArray }
+    }).populate("userId", "fname lname email");
+
+    let totalLeftPro = 0;
+    let totalRightPro = 0;
+    let totalMain = 0;
+
+    const membersListPromises = teamMemberRecords.map(async (tm) => {
+
+      const childTeamMembers = tm.teamMembers || [];
+      let childrenDetails = [];
+
+      if (childTeamMembers.length > 0) {
+
+        const childRecords = await TeamMember.find({
+          userId: { $in: childTeamMembers }
+        }).populate("userId", "fname lname email");
+
+        childrenDetails = childRecords.map(child => {
+          return {
+            userId: child.userId?._id || child.userId,
+            email: child.userId?.email || "N/A",
+            name: child.userId
+              ? `${child.userId.fname} ${child.userId.lname}`
+              : "N/A",
+            position: child.position || "main",
+            directCount: child.directCount || 0,
+            referralCode: child.referralCode,
+          };
+        });
+      }
+
+      // Contribution = member itself + their direct children
+      const contribution = 1 + (tm.directCount || 0);
+
+      if (tm.position === "left") {
+        totalLeftPro += contribution;
+      } else if (tm.position === "right") {
+        totalRightPro += contribution;
+      } else {
+        totalMain += contribution;
+      }
+
+      return {
+        userId: tm.userId?._id || tm.userId,
+        email: tm.userId?.email || "N/A",
+        name: tm.userId
+          ? `${tm.userId.fname} ${tm.userId.lname}`
+          : "N/A",
+        position: tm.position || "main",
+        directCount: tm.directCount || 0,
+        referralCode: tm.referralCode,
+        teamMembers: childrenDetails,
+      };
+    });
+
+    const membersList = await Promise.all(membersListPromises);
+
+    const totalDirectCount = totalLeftPro + totalRightPro + totalMain;
+
+    // Calculate total PV (each member generates 94.5 PV)
+    const totalPV = totalDirectCount * 94.5;
+    const leftProPV = totalLeftPro * 94.5;
+    const rightProPV = totalRightPro * 94.5;
+    const mainPV = totalMain * 94.5;
+
+    // ========== RANK UPDATE LOGIC BASED ON DIRECT COUNT ==========
+    // Use totalDirectCount as totalActiveAffiliates for rank calculation
+    const rankData = calculateBinaryRank(totalDirectCount);
+    const previousRank = member.binaryRank;
+    
+    member.binaryRank = rankData.name;
+    member.binaryBonusPercent = rankData.bonusPercent;
+
+    // ========== BINARY COMMISSION CALCULATION (1:1 MATCHING - WEAKER LEG) ==========
+    // Calculate weaker leg - this is the matched volume (1:1 matching)
+    const weakerLegPV = Math.min(leftProPV, rightProPV);
+    const matchedVolume = weakerLegPV; // Matched = Weaker leg
+    
+    // Calculate carry forward (remaining unmatched PV from each leg)
+    const carryForwardLeft = leftProPV - matchedVolume;
+    const carryForwardRight = rightProPV - matchedVolume;
+    
+    // Calculate commission based on matched volume and rank bonus percent
+    const commissionAmount = matchedVolume * (member.binaryBonusPercent / 100);
+    
+    // Store carry forward values in member document
+    member.carryForwardLeftPV = carryForwardLeft;
+    member.carryForwardRightPV = carryForwardRight;
+    // ========== END BINARY COMMISSION CALCULATION ==========
+    
+    // Track highest rank achieved (never decreases)
+    const rankHierarchy = ["NONE", "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR", "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD", "LUMINARY", "SOVEREIGN", "ZENITH"];
+    const currentRankIndex = rankHierarchy.indexOf(member.binaryRank);
+    const highestRankIndex = rankHierarchy.indexOf(member.highestRankAchieved || "NONE");
+    
+    if (currentRankIndex > highestRankIndex) {
+      member.highestRankAchieved = member.binaryRank;
+      member.highestRankAchievedDate = new Date();
+      teamLogger.info("New highest rank achieved", {
+        userId,
+        newRank: member.binaryRank,
+        previousHighest: rankHierarchy[highestRankIndex],
+        totalDirectCount,
+      });
+    }
+    
+    // Save updated rank information
+    await member.save();
+    
+    if (previousRank !== member.binaryRank) {
+      teamLogger.info("Rank updated based on direct count", {
+        userId,
+        previousRank,
+        newRank: member.binaryRank,
+        bonusPercent: member.binaryBonusPercent,
+        totalDirectCount,
+      });
+    }
+    // ========== END RANK UPDATE LOGIC ==========
+
+    teamLogger.success("Simple team members list retrieved with rank update", {
+      userId,
+      directCount: totalDirectCount,
+      leftProCount: totalLeftPro,
+      rightProCount: totalRightPro,
+      mainCount: totalMain,
+      totalPV,
+      matchedVolume,
+      commissionAmount,
+      binaryRank: member.binaryRank,
+      bonusPercent: member.binaryBonusPercent,
+    });
+
+    return {
+      success: true,
+      data: {
+        directCount: totalDirectCount,
+        leftProCount: totalLeftPro,
+        rightProCount: totalRightPro,
+        mainCount: totalMain,
+        totalPV: totalPV,
+        leftProPV: leftProPV,
+        rightProPV: rightProPV,
+        mainPV: mainPV,
+        weakerLegPV: weakerLegPV,
+        matchedVolume: matchedVolume,
+        commissionAmount: parseFloat(commissionAmount.toFixed(2)),
+        carryForwardLeft: parseFloat(carryForwardLeft.toFixed(2)),
+        carryForwardRight: parseFloat(carryForwardRight.toFixed(2)),
+        members: membersList,
+        binaryRank: member.binaryRank,
+        binaryBonusPercent: member.binaryBonusPercent,
+        highestRankAchieved: member.highestRankAchieved,
+        rankBadge: getRankBadge(member.binaryRank),
+        rankColor: getRankColor(member.binaryRank),
+      },
+    };
+
+  } catch (error) {
+    teamLogger.error("Error getting simple team members list", error);
+
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
 // Get referral statistics for a specific user
 export const getReferralStats = async (userId) => {
   try {
@@ -3428,6 +3745,781 @@ export const getAllRewardClaims = async (filters = {}) => {
     };
   } catch (error) {
     teamLogger.error("Error getting all reward claims", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+// ==================== LEG COUNT MANAGEMENT ====================
+
+/**
+ * Helper: Recursively count all descendants regardless of position
+ */
+const countAllDescendants = async (memberId, visited = new Set()) => {
+  if (!memberId || visited.has(memberId.toString())) {
+    return 0;
+  }
+  
+  visited.add(memberId.toString());
+  
+  const children = await TeamMember.find({ sponsorId: memberId });
+  let count = children.length;
+  
+  for (const child of children) {
+    const descendantCount = await countAllDescendants(child._id, visited);
+    count += descendantCount;
+  }
+  
+  return count;
+};
+
+/**
+ * Update leg counts for ALL upline members when a new member joins
+ * This ensures everyone in the upline tree has correct counts including descendants
+ * 
+ * @param {ObjectId} newMemberId - The new member's TeamMember _id
+ * @returns {Promise<Object>} Update results
+ */
+export const updateUplineLegCounts = async (newMemberId) => {
+  try {
+    const newMember = await TeamMember.findById(newMemberId);
+    
+    if (!newMember || !newMember.sponsorId || newMember.position === 'main') {
+      return {
+        success: true,
+        message: "No upline update needed (no sponsor or main position)",
+        updatedCount: 0
+      };
+    }
+
+    let currentSponsorId = newMember.sponsorId;
+    let currentPosition = newMember.position; // 'left' or 'right'
+    let updatedCount = 0;
+
+    teamLogger.info("🔄 Updating upline leg counts", {
+      newMemberId,
+      position: currentPosition
+    });
+
+    // Traverse up the tree and update each sponsor's leg counts
+    while (currentSponsorId) {
+      const sponsor = await TeamMember.findById(currentSponsorId);
+      
+      if (!sponsor) {
+        break;
+      }
+
+      // Increment the appropriate leg count
+      if (currentPosition === 'left') {
+        sponsor.leftLegCount = (sponsor.leftLegCount || 0) + 1;
+        teamLogger.debug(`  ✅ Updated sponsor leftLegCount: ${sponsor.leftLegCount}`, {
+          sponsorId: sponsor._id
+        });
+      } else if (currentPosition === 'right') {
+        sponsor.rightLegCount = (sponsor.rightLegCount || 0) + 1;
+        teamLogger.debug(`  ✅ Updated sponsor rightLegCount: ${sponsor.rightLegCount}`, {
+          sponsorId: sponsor._id
+        });
+      }
+
+      // Update totalActiveAffiliates
+      sponsor.totalActiveAffiliates = (sponsor.leftLegCount || 0) + (sponsor.rightLegCount || 0);
+
+      await sponsor.save();
+      updatedCount++;
+
+      // Move up to the next sponsor
+      currentPosition = sponsor.position;
+      currentSponsorId = sponsor.sponsorId;
+    }
+
+    teamLogger.success(`✅ Upline leg counts updated for ${updatedCount} members`);
+
+    return {
+      success: true,
+      message: `Updated ${updatedCount} upline members`,
+      updatedCount
+    };
+  } catch (error) {
+    teamLogger.error("Error updating upline leg counts", error);
+    return {
+      success: false,
+      message: error.message,
+      updatedCount: 0
+    };
+  }
+};
+
+/**
+ * Get detailed leg count information for a user
+ * Shows stored counts, calculated counts, and complete tree visualization
+ */
+export const getLegCountDetails = async (userId) => {
+  try {
+    teamLogger.start(`Getting leg count details for user: ${userId}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
+
+    const teamMember = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email")
+      .populate("sponsorId");
+
+    if (!teamMember) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // Get stored counts from database
+    const storedLeftLegCount = teamMember.leftLegCount || 0;
+    const storedRightLegCount = teamMember.rightLegCount || 0;
+    const storedTotalActive = teamMember.totalActiveAffiliates || 0;
+
+    // Calculate actual counts manually
+    const leftChildren = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'left'
+    }).populate("userId", "fname lname email");
+
+    let calculatedLeftCount = 0;
+    const leftLegDetails = [];
+
+    for (const child of leftChildren) {
+      const descendantsCount = await countAllDescendants(child._id, new Set());
+      const totalContribution = 1 + descendantsCount;
+      
+      leftLegDetails.push({
+        memberId: child._id,
+        name: `${child.userId.fname} ${child.userId.lname}`,
+        email: child.userId.email,
+        directCount: 1,
+        descendantsCount: descendantsCount,
+        totalContribution: totalContribution,
+      });
+      
+      calculatedLeftCount += totalContribution;
+    }
+
+    const rightChildren = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'right'
+    }).populate("userId", "fname lname email");
+
+    let calculatedRightCount = 0;
+    const rightLegDetails = [];
+
+    for (const child of rightChildren) {
+      const descendantsCount = await countAllDescendants(child._id, new Set());
+      const totalContribution = 1 + descendantsCount;
+      
+      rightLegDetails.push({
+        memberId: child._id,
+        name: `${child.userId.fname} ${child.userId.lname}`,
+        email: child.userId.email,
+        directCount: 1,
+        descendantsCount: descendantsCount,
+        totalContribution: totalContribution,
+      });
+      
+      calculatedRightCount += totalContribution;
+    }
+
+    const calculatedTotal = calculatedLeftCount + calculatedRightCount;
+
+    // Check if counts match
+    const leftMatch = storedLeftLegCount === calculatedLeftCount;
+    const rightMatch = storedRightLegCount === calculatedRightCount;
+    const totalMatch = storedTotalActive === calculatedTotal;
+    const allMatch = leftMatch && rightMatch && totalMatch;
+
+    teamLogger.success(`Leg count details retrieved for ${user.fname} ${user.lname}`);
+
+    return {
+      success: true,
+      data: {
+        userInfo: {
+          userId: user._id,
+          name: `${user.fname} ${user.lname}`,
+          email: user.email,
+        },
+        storedCounts: {
+          leftLegCount: storedLeftLegCount,
+          rightLegCount: storedRightLegCount,
+          totalActiveAffiliates: storedTotalActive,
+        },
+        calculatedCounts: {
+          leftLegCount: calculatedLeftCount,
+          rightLegCount: calculatedRightCount,
+          totalActiveAffiliates: calculatedTotal,
+        },
+        comparison: {
+          leftLegMatch: leftMatch,
+          rightLegMatch: rightMatch,
+          totalActiveMatch: totalMatch,
+          allCountsMatch: allMatch,
+        },
+        leftLegDetails: leftLegDetails,
+        rightLegDetails: rightLegDetails,
+        needsUpdate: !allMatch,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting leg count details", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Verify leg counts for a single user or all users
+ * Returns mismatches between stored and calculated counts
+ */
+export const verifyLegCounts = async (userId = null) => {
+  try {
+    teamLogger.start(userId ? `Verifying leg counts for user: ${userId}` : "Verifying leg counts for all users");
+
+    let members;
+    if (userId) {
+      const user = await User.findById(userId);
+      if (!user) {
+        return { success: false, message: "User not found" };
+      }
+      const teamMember = await TeamMember.findOne({ userId }).populate("userId", "fname lname email");
+      if (!teamMember) {
+        return { success: false, message: "Team member not found" };
+      }
+      members = [teamMember];
+    } else {
+      members = await TeamMember.find({}).populate("userId", "fname lname email");
+    }
+
+    const mismatches = [];
+    let totalVerified = 0;
+    let totalCorrect = 0;
+    let totalIncorrect = 0;
+
+    for (const member of members) {
+      const storedLeft = member.leftLegCount || 0;
+      const storedRight = member.rightLegCount || 0;
+      const storedTotal = member.totalActiveAffiliates || 0;
+
+      // Calculate actual counts
+      const leftChildren = await TeamMember.find({
+        sponsorId: member._id,
+        position: 'left'
+      });
+
+      let calculatedLeft = 0;
+      for (const child of leftChildren) {
+        const descendants = await countAllDescendants(child._id, new Set());
+        calculatedLeft += 1 + descendants;
+      }
+
+      const rightChildren = await TeamMember.find({
+        sponsorId: member._id,
+        position: 'right'
+      });
+
+      let calculatedRight = 0;
+      for (const child of rightChildren) {
+        const descendants = await countAllDescendants(child._id, new Set());
+        calculatedRight += 1 + descendants;
+      }
+
+      const calculatedTotal = calculatedLeft + calculatedRight;
+
+      totalVerified++;
+
+      const hasMatch = 
+        storedLeft === calculatedLeft && 
+        storedRight === calculatedRight && 
+        storedTotal === calculatedTotal;
+
+      if (hasMatch) {
+        totalCorrect++;
+      } else {
+        totalIncorrect++;
+        mismatches.push({
+          userId: member.userId._id,
+          name: `${member.userId.fname} ${member.userId.lname}`,
+          email: member.userId.email,
+          stored: {
+            leftLegCount: storedLeft,
+            rightLegCount: storedRight,
+            totalActiveAffiliates: storedTotal,
+          },
+          calculated: {
+            leftLegCount: calculatedLeft,
+            rightLegCount: calculatedRight,
+            totalActiveAffiliates: calculatedTotal,
+          },
+          differences: {
+            leftLeg: calculatedLeft - storedLeft,
+            rightLeg: calculatedRight - storedRight,
+            total: calculatedTotal - storedTotal,
+          },
+        });
+      }
+    }
+
+    teamLogger.success(`Verification complete: ${totalVerified} members checked, ${totalCorrect} correct, ${totalIncorrect} incorrect`);
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          totalVerified,
+          totalCorrect,
+          totalIncorrect,
+          accuracyPercentage: totalVerified > 0 ? ((totalCorrect / totalVerified) * 100).toFixed(2) : 0,
+        },
+        mismatches: mismatches,
+        allCorrect: totalIncorrect === 0,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error verifying leg counts", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Recalculate and update leg counts for a user or all users
+ */
+export const recalculateLegCounts = async (userId = null) => {
+  try {
+    teamLogger.start(userId ? `Recalculating leg counts for user: ${userId}` : "Recalculating leg counts for all users");
+
+    let members;
+    if (userId) {
+      const user = await User.findById(userId);
+      if (!user) {
+        return { success: false, message: "User not found" };
+      }
+      const teamMember = await TeamMember.findOne({ userId }).populate("userId", "fname lname email");
+      if (!teamMember) {
+        return { success: false, message: "Team member not found" };
+      }
+      members = [teamMember];
+    } else {
+      members = await TeamMember.find({}).populate("userId", "fname lname email");
+    }
+
+    const updates = [];
+    let totalProcessed = 0;
+    let totalUpdated = 0;
+    let totalUnchanged = 0;
+
+    for (const member of members) {
+      const oldLeft = member.leftLegCount || 0;
+      const oldRight = member.rightLegCount || 0;
+      const oldTotal = member.totalActiveAffiliates || 0;
+
+      // Calculate new counts
+      const leftChildren = await TeamMember.find({
+        sponsorId: member._id,
+        position: 'left'
+      });
+
+      let newLeftCount = 0;
+      for (const child of leftChildren) {
+        const descendants = await countAllDescendants(child._id, new Set());
+        newLeftCount += 1 + descendants;
+      }
+
+      const rightChildren = await TeamMember.find({
+        sponsorId: member._id,
+        position: 'right'
+      });
+
+      let newRightCount = 0;
+      for (const child of rightChildren) {
+        const descendants = await countAllDescendants(child._id, new Set());
+        newRightCount += 1 + descendants;
+      }
+
+      const newTotalCount = newLeftCount + newRightCount;
+
+      totalProcessed++;
+
+      const hasChanges = 
+        oldLeft !== newLeftCount || 
+        oldRight !== newRightCount || 
+        oldTotal !== newTotalCount;
+
+      if (hasChanges) {
+        // Update the member
+        member.leftLegCount = newLeftCount;
+        member.rightLegCount = newRightCount;
+        member.totalActiveAffiliates = newTotalCount;
+        await member.save();
+
+        totalUpdated++;
+        updates.push({
+          userId: member.userId._id,
+          name: `${member.userId.fname} ${member.userId.lname}`,
+          email: member.userId.email,
+          before: {
+            leftLegCount: oldLeft,
+            rightLegCount: oldRight,
+            totalActiveAffiliates: oldTotal,
+          },
+          after: {
+            leftLegCount: newLeftCount,
+            rightLegCount: newRightCount,
+            totalActiveAffiliates: newTotalCount,
+          },
+          changes: {
+            leftLeg: newLeftCount - oldLeft,
+            rightLeg: newRightCount - oldRight,
+            total: newTotalCount - oldTotal,
+          },
+        });
+
+        teamLogger.info(`Updated leg counts for ${member.userId.fname} ${member.userId.lname}`, {
+          leftLeg: `${oldLeft} → ${newLeftCount}`,
+          rightLeg: `${oldRight} → ${newRightCount}`,
+          total: `${oldTotal} → ${newTotalCount}`,
+        });
+      } else {
+        totalUnchanged++;
+      }
+    }
+
+    teamLogger.success(`Recalculation complete: ${totalProcessed} processed, ${totalUpdated} updated, ${totalUnchanged} unchanged`);
+
+    return {
+      success: true,
+      data: {
+        summary: {
+          totalProcessed,
+          totalUpdated,
+          totalUnchanged,
+        },
+        updates: updates,
+      },
+      message: `Successfully recalculated leg counts. ${totalUpdated} members updated, ${totalUnchanged} already correct.`,
+    };
+  } catch (error) {
+    teamLogger.error("Error recalculating leg counts", error);
+    return {
+      success: false,
+      message: error.message,
+    };
+  }
+};
+
+/**
+ * Get Complete Binary Tree Analytics
+ * 
+ * Comprehensive endpoint that returns EVERYTHING:
+ * - Leg counts (left/right with complete downline)
+ * - PV values (left/right with complete tree)
+ * - Binary rank and commission percentage
+ * - Carry forward values
+ * - Matched PV and pairs
+ * - Commission earnings summary
+ * - Tree validation (stored vs calculated)
+ * - Team statistics
+ */
+export const getCompleteBinaryAnalytics = async (userId) => {
+  try {
+    teamLogger.start(`Getting complete binary analytics for user: ${userId}`);
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return {
+        success: false,
+        message: "User not found",
+      };
+    }
+
+    const teamMember = await TeamMember.findOne({ userId })
+      .populate("userId", "fname lname email phone")
+      .populate("sponsorId");
+
+    if (!teamMember) {
+      return {
+        success: false,
+        message: "Team member not found",
+      };
+    }
+
+    // ==================== 1. USER INFO ====================
+    const userInfo = {
+      userId: user._id,
+      name: `${user.fname} ${user.lname}`,
+      email: user.email,
+      phone: user.phone || "N/A",
+      memberSince: teamMember.createdAt,
+    };
+
+    // ==================== 2. REFERRAL CODES ====================
+    const referralCodes = {
+      leftCode: teamMember.leftReferralCode || generateLeftReferralCode(user._id),
+      rightCode: teamMember.rightReferralCode || generateRightReferralCode(user._id),
+    };
+
+    // ==================== 3. SPONSOR INFO ====================
+    let sponsorInfo = null;
+    if (teamMember.sponsorId) {
+      const sponsor = await User.findById(teamMember.sponsorId);
+      sponsorInfo = sponsor ? {
+        sponsorId: sponsor._id,
+        sponsorName: `${sponsor.fname} ${sponsor.lname}`,
+        sponsorEmail: sponsor.email,
+        position: teamMember.position || "N/A",
+      } : null;
+    }
+
+    // ==================== 4. LEG COUNTS (STORED) ====================
+    const storedLegCounts = {
+      leftLegCount: teamMember.leftLegCount || 0,
+      rightLegCount: teamMember.rightLegCount || 0,
+      totalActiveAffiliates: teamMember.totalActiveAffiliates || 0,
+      directCount: teamMember.directCount || 0,
+    };
+
+    // ==================== 5. LEG COUNTS (CALCULATED - LIVE) ====================
+    const leftChildren = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'left'
+    });
+
+    let calculatedLeftCount = 0;
+    for (const child of leftChildren) {
+      const descendants = await countAllDescendants(child._id, new Set());
+      calculatedLeftCount += 1 + descendants;
+    }
+
+    const rightChildren = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'right'
+    });
+
+    let calculatedRightCount = 0;
+    for (const child of rightChildren) {
+      const descendants = await countAllDescendants(child._id, new Set());
+      calculatedRightCount += 1 + descendants;
+    }
+
+    const calculatedLegCounts = {
+      leftLegCount: calculatedLeftCount,
+      rightLegCount: calculatedRightCount,
+      totalActiveAffiliates: calculatedLeftCount + calculatedRightCount,
+    };
+
+    const legCountsMatch = 
+      storedLegCounts.leftLegCount === calculatedLeftCount &&
+      storedLegCounts.rightLegCount === calculatedRightCount;
+
+    // ==================== 6. PV VALUES (STORED) ====================
+    const storedPV = {
+      leftLegPV: teamMember.leftLegPV || 0,
+      rightLegPV: teamMember.rightLegPV || 0,
+      totalPV: (teamMember.leftLegPV || 0) + (teamMember.rightLegPV || 0),
+      weakerLegPV: Math.min(teamMember.leftLegPV || 0, teamMember.rightLegPV || 0),
+      strongerLegPV: Math.max(teamMember.leftLegPV || 0, teamMember.rightLegPV || 0),
+    };
+
+    // ==================== 7. PV VALUES (CALCULATED - LIVE) ====================
+    const { calculateCompleteBinaryTreePV } = await import('../../helpers/binaryCommissionHelper.js');
+    const calculatedPVData = await calculateCompleteBinaryTreePV(userId);
+    
+    const calculatedPV = {
+      leftLegPV: calculatedPVData.leftPV || 0,
+      rightLegPV: calculatedPVData.rightPV || 0,
+      totalPV: calculatedPVData.totalPV || 0,
+      weakerLegPV: Math.min(calculatedPVData.leftPV || 0, calculatedPVData.rightPV || 0),
+      strongerLegPV: Math.max(calculatedPVData.leftPV || 0, calculatedPVData.rightPV || 0),
+    };
+
+    const pvMatch = 
+      Math.abs(storedPV.leftLegPV - calculatedPV.leftLegPV) < 1 &&
+      Math.abs(storedPV.rightLegPV - calculatedPV.rightLegPV) < 1;
+
+    // ==================== 8. BINARY RANK & COMMISSION ====================
+    const { calculateBinaryRank } = await import('../../helpers/binaryRankHelper.js');
+    const totalTeam = storedLegCounts.totalActiveAffiliates;
+    const rankData = calculateBinaryRank(totalTeam);
+
+    const binaryRank = {
+      currentRank: rankData.rank,
+      commissionPercentage: rankData.percentage,
+      requiredMembers: rankData.minMembers,
+      membersToNextRank: rankData.nextRankMembers ? rankData.nextRankMembers - totalTeam : null,
+      nextRank: rankData.nextRank || "MAX RANK",
+      highestRankAchieved: teamMember.highestRankAchieved || "NONE",
+    };
+
+    // ==================== 9. CARRY FORWARD VALUES ====================
+    const carryForward = {
+      carryForwardLeftPV: teamMember.carryForwardLeftPV || 0,
+      carryForwardRightPV: teamMember.carryForwardRightPV || 0,
+      lastBinaryCalculation: teamMember.lastBinaryCalculation || null,
+    };
+
+    // ==================== 10. MATCHING & PAIRING ====================
+    const totalLeftPV = (carryForward.carryForwardLeftPV || 0) + (storedPV.leftLegPV || 0);
+    const totalRightPV = (carryForward.carryForwardRightPV || 0) + (storedPV.rightLegPV || 0);
+    const matchedPV = Math.min(totalLeftPV, totalRightPV);
+    const pairs = Math.floor(matchedPV / 94.5);
+    const potentialCommission = matchedPV * (rankData.percentage / 100);
+
+    const matching = {
+      totalLeftPV,
+      totalRightPV,
+      matchedPV,
+      pairs,
+      unmatchedLeftPV: totalLeftPV - matchedPV,
+      unmatchedRightPV: totalRightPV - matchedPV,
+      potentialCommission,
+      pairValue: 94.5,
+      matchingRatio: `1:2`,
+    };
+
+    // ==================== 11. COMMISSION EARNINGS ====================
+    const Commission = (await import('../../models/commissionModel.js')).default;
+    
+    const commissionStats = await Commission.aggregate([
+      { $match: { userId: teamMember._id } },
+      {
+        $group: {
+          _id: "$commissionType",
+          totalAmount: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const commissionBreakdown = {};
+    let totalCommissions = 0;
+
+    commissionStats.forEach(stat => {
+      commissionBreakdown[stat._id] = {
+        total: stat.totalAmount,
+        count: stat.count,
+      };
+      totalCommissions += stat.totalAmount;
+    });
+
+    const earnings = {
+      totalEarnings: teamMember.totalEarnings || 0,
+      directBonusIncome: teamMember.directBonusIncome || 0,
+      levelIncome: teamMember.levelIncome || 0,
+      binaryIncome: teamMember.binaryIncome || 0,
+      availableBalance: teamMember.totalEarnings - (teamMember.totalWithdrawn || 0),
+      totalWithdrawn: teamMember.totalWithdrawn || 0,
+      commissionBreakdown,
+      totalCommissionRecords: commissionStats.reduce((sum, s) => sum + s.count, 0),
+    };
+
+    // ==================== 12. VALIDATION STATUS ====================
+    const validation = {
+      legCountsMatch,
+      pvMatch,
+      countsNeedUpdate: !legCountsMatch,
+      pvNeedsUpdate: !pvMatch,
+      allDataValid: legCountsMatch && pvMatch,
+      lastUpdated: teamMember.updatedAt,
+    };
+
+    // ==================== 13. DIRECT CHILDREN BREAKDOWN ====================
+    const leftChildrenDetails = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'left'
+    }).populate("userId", "fname lname email");
+
+    const leftLegBreakdown = [];
+    for (const child of leftChildrenDetails) {
+      const descendants = await countAllDescendants(child._id, new Set());
+      leftLegBreakdown.push({
+        memberId: child._id,
+        name: `${child.userId.fname} ${child.userId.lname}`,
+        email: child.userId.email,
+        directDescendants: descendants,
+        totalContribution: 1 + descendants,
+        pv: child.leftLegPV + child.rightLegPV + 94.5, // Their tree + themselves
+      });
+    }
+
+    const rightChildrenDetails = await TeamMember.find({
+      sponsorId: teamMember._id,
+      position: 'right'
+    }).populate("userId", "fname lname email");
+
+    const rightLegBreakdown = [];
+    for (const child of rightChildrenDetails) {
+      const descendants = await countAllDescendants(child._id, new Set());
+      rightLegBreakdown.push({
+        memberId: child._id,
+        name: `${child.userId.fname} ${child.userId.lname}`,
+        email: child.userId.email,
+        directDescendants: descendants,
+        totalContribution: 1 + descendants,
+        pv: child.leftLegPV + child.rightLegPV + 94.5, // Their tree + themselves
+      });
+    }
+
+    // ==================== 14. STATISTICS SUMMARY ====================
+    const statistics = {
+      teamSize: totalTeam,
+      leftLegSize: storedLegCounts.leftLegCount,
+      rightLegSize: storedLegCounts.rightLegCount,
+      directReferrals: storedLegCounts.directCount,
+      teamBalance: `${storedLegCounts.leftLegCount}:${storedLegCounts.rightLegCount}`,
+      balancePercentage: totalTeam > 0 ? {
+        left: ((storedLegCounts.leftLegCount / totalTeam) * 100).toFixed(2) + '%',
+        right: ((storedLegCounts.rightLegCount / totalTeam) * 100).toFixed(2) + '%',
+      } : { left: '0%', right: '0%' },
+      totalPV: storedPV.totalPV,
+      averagePVPerMember: totalTeam > 0 ? (storedPV.totalPV / totalTeam).toFixed(2) : 0,
+    };
+
+    teamLogger.success(`Complete binary analytics retrieved for ${user.fname} ${user.lname}`);
+
+    // ==================== FINAL RESPONSE ====================
+    return {
+      success: true,
+      data: {
+        userInfo,
+        referralCodes,
+        sponsorInfo,
+        legCounts: {
+          stored: storedLegCounts,
+          calculated: calculatedLegCounts,
+          match: legCountsMatch,
+        },
+        pv: {
+          stored: storedPV,
+          calculated: calculatedPV,
+          match: pvMatch,
+        },
+        binaryRank,
+        carryForward,
+        matching,
+        earnings,
+        validation,
+        leftLegBreakdown,
+        rightLegBreakdown,
+        statistics,
+      },
+    };
+  } catch (error) {
+    teamLogger.error("Error getting complete binary analytics", error);
     return {
       success: false,
       message: error.message,

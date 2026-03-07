@@ -92,10 +92,12 @@ export const addPVToLeg = async (userId, position, pvAmount = PV_PER_SUBSCRIPTIO
 
 /**
  * Propagate PV up the binary tree
+ * @param {ObjectId} sponsorId - TeamMember _id (NOT userId!)
  */
 const propagatePVToUpline = async (sponsorId, position, pvAmount) => {
   try {
-    const sponsor = await TeamMember.findOne({ userId: sponsorId });
+    // sponsorId is TeamMember._id, so find by _id
+    const sponsor = await TeamMember.findById(sponsorId);
     if (!sponsor) return;
 
     // Add to sponsor's corresponding leg
@@ -118,7 +120,7 @@ const propagatePVToUpline = async (sponsorId, position, pvAmount) => {
 
     await sponsor.save();
 
-    // Continue propagating
+    // Continue propagating to next sponsor (sponsorId is also TeamMember._id)
     if (sponsor.sponsorId) {
       await propagatePVToUpline(sponsor.sponsorId, position, pvAmount);
     }

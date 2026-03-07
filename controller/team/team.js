@@ -23,6 +23,8 @@ import {
   getMyDownlineStructure,
   getDownlineStructure,
   getUserDownlineOnly,
+  getUserBinaryDownline,
+  getSimpleTeamMembersList,
   validateReferralCode,
   applyReferralCode,
   getReferralStats,
@@ -36,6 +38,10 @@ import {
   getRewardHistory,
   updateRewardStatus,
   getAllRewardClaims,
+  getLegCountDetails,
+  verifyLegCounts,
+  recalculateLegCounts,
+  getCompleteBinaryAnalytics,
 } from "./teamController.js";
 
 const router = express.Router();
@@ -186,6 +192,26 @@ router.get("/team/downline-structure/:userId", requireSignin, async (req, res) =
 router.get("/team/my-downline", requireSignin, async (req, res) => {
   try {
     const result = await getUserDownlineOnly(req.user._id);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get user's BINARY TREE downline (includes ALL LPRO/RPRO/Main children) - FOR USER PANEL  
+router.get("/team/my-binary-downline", requireSignin, async (req, res) => {
+  try {
+    const result = await getUserBinaryDownline(req.user._id);
+    return res.status(result.success ? 200 : 404).json(result);
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Get simple team members list with directCount and position
+router.get("/team/my-team-list", requireSignin, async (req, res) => {
+  try {
+    const result = await getSimpleTeamMembersList(req.user._id);
     return res.status(result.success ? 200 : 404).json(result);
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -512,6 +538,104 @@ router.get("/team/binary/scheduler-status", requireSignin, async (req, res) => {
     return res.status(200).json({ success: true, data: status });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==================== LEG COUNT MANAGEMENT ROUTES ====================
+
+/**
+ * GET /api/team/leg-counts/details
+ * Get detailed leg count information for the authenticated user
+ * Shows stored vs calculated counts with complete tree breakdown
+ */
+router.get("/team/leg-counts/details", requireSignin, async (req, res) => {
+  try {
+    const result = await getLegCountDetails(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * GET /api/team/leg-counts/verify
+ * Verify leg counts for the authenticated user or all users
+ * Query param: all=true to verify all users (requires admin permissions in future)
+ */
+router.get("/team/leg-counts/verify", requireSignin, async (req, res) => {
+  try {
+    const verifyAll = req.query.all === 'true';
+    const userId = verifyAll ? null : req.user._id;
+    
+    // TODO: Add admin check if verifyAll is true
+    // if (verifyAll && !req.user.isAdmin) {
+    //   return res.status(403).json({ success: false, message: "Admin access required" });
+    // }
+    
+    const result = await verifyLegCounts(userId);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
+
+/**
+ * POST /api/team/leg-counts/recalculate
+ * Recalculate and update leg counts for the authenticated user or all users
+ * Body: { all: true } to recalculate for all users (requires admin permissions in future)
+ */
+router.post("/team/leg-counts/recalculate", requireSignin, async (req, res) => {
+  try {
+    const recalculateAll = req.body.all === true;
+    const userId = recalculateAll ? null : req.user._id;
+    
+    // TODO: Add admin check if recalculateAll is true
+    // if (recalculateAll && !req.user.isAdmin) {
+    //   return res.status(403).json({ success: false, message: "Admin access required" });
+    // }
+    
+    const result = await recalculateLegCounts(userId);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+});
+
+// ==================== COMPLETE BINARY ANALYTICS ====================
+
+/**
+ * GET /api/team/binary/complete-analytics
+ * Get complete binary tree analytics in one call
+ * 
+ * Returns EVERYTHING:
+ * - Leg counts (stored & calculated)
+ * - PV values (stored & calculated)
+ * - Binary rank & commission %
+ * - Carry forward values
+ * - Matching & pairing calculations
+ * - Commission earnings breakdown
+ * - Tree validation status
+ * - Direct children breakdown
+ * - Statistics summary
+ */
+router.get("/team/binary/complete-analytics", requireSignin, async (req, res) => {
+  try {
+    const result = await getCompleteBinaryAnalytics(req.user._id);
+    return res.status(result.success ? 200 : 400).json(result);
+  } catch (error) {
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
   }
 });
 
