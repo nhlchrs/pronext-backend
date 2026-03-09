@@ -3580,7 +3580,15 @@ export const claimReward = async (userId, rewardData) => {
   try {
     const { rank, size, color, shippingAddress, notes } = rewardData;
 
-    teamLogger.start("Redeeming reward", { userId, rank });
+    teamLogger.start("Redeeming reward", { userId, rank, rewardData });
+
+    // Validate required fields
+    if (!rank) {
+      return {
+        success: false,
+        message: "Rank is required to claim a reward.",
+      };
+    }
 
     // Validate user
     const member = await TeamMember.findOne({ userId });
@@ -3590,6 +3598,12 @@ export const claimReward = async (userId, rewardData) => {
         message: "Team member not found",
       };
     }
+
+    teamLogger.debug("Member found", { 
+      userId, 
+      currentRank: member.binaryRank,
+      highestRank: member.highestRankAchieved 
+    });
 
     // Check if user has achieved this rank (based on highest rank, not current)
     const rankHierarchy = [
@@ -3602,19 +3616,40 @@ export const claimReward = async (userId, rewardData) => {
     const requestedRankIndex = rankHierarchy.indexOf(rank);
     const highestRankIndex = rankHierarchy.indexOf(highestRank);
 
-    if (requestedRankIndex === -1 || requestedRankIndex > highestRankIndex) {
+    teamLogger.debug("Rank validation", {
+      requestedRank: rank,
+      requestedRankIndex,
+      highestRank,
+      highestRankIndex
+    });
+
+    if (requestedRankIndex === -1) {
       return {
         success: false,
-        message: "You haven't achieved this rank yet.",
+        message: "Invalid rank specified.",
       };
     }
 
-    // Check if reward already redeemed
+    if (requestedRankIndex > highestRankIndex) {
+      return {
+        success: false,
+        message: `You haven't achieved the ${rank} rank yet. Your highest rank is ${highestRank}.`,
+      };
+    }
+
+    // Check if reward already redeemed (ONE-TIME REDEMPTION CHECK)
     const existingReward = await BinaryReward.findOne({ userId, rank });
+    
+    teamLogger.debug("Checking for existing reward", { 
+      userId, 
+      rank, 
+      existingReward: existingReward ? 'Found' : 'Not found' 
+    });
+
     if (existingReward) {
       return {
         success: false,
-        message: "Reward for this rank already redeemed. Each reward can only be claimed once.",
+        message: `You have already redeemed the ${rank} reward on ${new Date(existingReward.claimedDate).toLocaleDateString()}. Each reward can only be claimed once.`,
       };
     }
 
@@ -3627,14 +3662,38 @@ export const claimReward = async (userId, rewardData) => {
       };
     }
 
+    teamLogger.debug("Reward config loaded", { 
+      rank, 
+      rewardType: rewardConfig.rewardType,
+      requiresShipping: rewardConfig.requiresShipping,
+      requiresSize: rewardConfig.requiresSize,
+      requiresColor: rewardConfig.requiresColor
+    });
+
     // Validate shipping address if required
     if (rewardConfig.requiresShipping) {
-      if (!shippingAddress || !shippingAddress.street || !shippingAddress.city) {
+      if (!shippingAddress || !shippingAddress.street || !shippingAddress.city || !shippingAddress.country || !shippingAddress.phone) {
         return {
           success: false,
-          message: "Valid shipping address is required for this reward.",
+          message: "Complete shipping address (street, city, country, phone) is required for this reward.",
         };
       }
+    }
+
+    // Validate size if required
+    if (rewardConfig.requiresSize && (!size || size === 'N/A' || size === '')) {
+      return {
+        success: false,
+        message: "Please select a size for this reward.",
+      };
+    }
+
+    // Validate color if required
+    if (rewardConfig.requiresColor && (!color || color === '')) {
+      return {
+        success: false,
+        message: "Please select a color for this reward.",
+      };
     }
 
     // Create reward redemption record
@@ -3646,8 +3705,8 @@ export const claimReward = async (userId, rewardData) => {
       status: "CLAIMED",
       claimedDate: new Date(),
       shippingAddress: rewardConfig.requiresShipping ? shippingAddress : null,
-      size: rewardConfig.requiresSize ? (size || "N/A") : "N/A",
-      color: rewardConfig.requiresColor ? (color || null) : null,
+      size: rewardConfig.requiresSize ? size : "N/A",
+      color: rewardConfig.requiresColor ? color : null,
       notes: notes || null,
       achievedDate: member.highestRankAchievedDate || new Date(),
     });
@@ -3677,7 +3736,7 @@ export const claimReward = async (userId, rewardData) => {
     teamLogger.error("Error redeeming reward", error);
     return {
       success: false,
-      message: error.message,
+      message: error.message || "An error occurred while redeeming the reward.",
     };
   }
 };
