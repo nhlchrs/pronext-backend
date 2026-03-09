@@ -3854,27 +3854,7 @@ export const getAllRewardClaims = async (filters = {}) => {
 
     return {
       success: true,
-      rewards: rewards.map(r => ({
-        id: r._id,
-        user: {
-          id: r.userId._id,
-          name: `${r.userId.fname} ${r.userId.lname}`,
-          email: r.userId.email,
-          phone: r.userId.phone,
-        },
-        rank: r.rank,
-        rewardType: r.rewardType,
-        status: r.status,
-        claimedDate: r.claimedDate,
-        processingDate: r.processingDate,
-        shippedDate: r.shippedDate,
-        deliveredDate: r.deliveredDate,
-        trackingNumber: r.trackingNumber,
-        shippingAddress: r.shippingAddress,
-        size: r.size,
-        color: r.color,
-        notes: r.notes,
-      })),
+      data: rewards,
       pagination: {
         total,
         page,

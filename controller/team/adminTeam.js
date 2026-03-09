@@ -19,7 +19,7 @@ import {
   deleteTeamMember,
   updateTeamMember,
 } from "./adminTeamController.js";
-import { getDownlineStructure } from "./teamController.js";
+import { getDownlineStructure, getAllRewardClaims, updateRewardStatus } from "./teamController.js";
 import Payout from "../../models/payoutModel.js";
 import User from "../../models/authModel.js";
 import logger from "../../helpers/logger.js";
@@ -575,6 +575,148 @@ router.get("/admin/payouts/export/csv", requireSignin, isAdmin, async (req, res)
 
   } catch (error) {
     adminPayoutLogger.error("Error exporting CSV", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error exporting CSV",
+      error: error.message
+    });
+  }
+});
+
+// ==================== REWARD MANAGEMENT ROUTES ====================
+
+/**
+ * Get all reward claims with filters
+ * GET /api/admin/rewards
+ */
+router.get("/admin/rewards", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { status, rank, page = 1, limit = 20 } = req.query;
+    
+    adminPayoutLogger.start("Fetching all reward claims", { status, rank, page, limit });
+
+    const filters = {
+      status,
+      rank,
+      page: parseInt(page),
+      limit: parseInt(limit)
+    };
+
+    const result = await getAllRewardClaims(filters);
+
+    if (result.success) {
+      adminPayoutLogger.success("Reward claims fetched", { count: result.data?.length || 0 });
+      return res.status(200).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error) {
+    adminPayoutLogger.error("Error fetching reward claims", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching reward claims",
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Update reward claim status
+ * PATCH /api/admin/rewards/:rewardId/status
+ */
+router.patch("/admin/rewards/:rewardId/status", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { rewardId } = req.params;
+    const { status, trackingNumber } = req.body;
+
+    adminPayoutLogger.start("Updating reward status", { rewardId, status });
+
+    if (!["CLAIMED", "PROCESSING", "SHIPPED", "DELIVERED"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid status. Must be CLAIMED, PROCESSING, SHIPPED, or DELIVERED"
+      });
+    }
+
+    const result = await updateRewardStatus(rewardId, status, { trackingNumber });
+
+    if (result.success) {
+      adminPayoutLogger.success("Reward status updated", { rewardId, status });
+      return res.status(200).json(result);
+    } else {
+      return res.status(400).json(result);
+    }
+  } catch (error) {
+    adminPayoutLogger.error("Error updating reward status", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error updating reward status",
+      error: error.message
+    });
+  }
+});
+
+/**
+ * Export reward claims as CSV
+ * GET /api/admin/rewards/export/csv
+ */
+router.get("/admin/rewards/export/csv", requireSignin, isAdmin, async (req, res) => {
+  try {
+    const { status, rank } = req.query;
+    adminPayoutLogger.start("Exporting rewards to CSV");
+
+    const filters = {
+      status,
+      rank,
+      page: 1,
+      limit: 10000 // Get all for export
+    };
+
+    const result = await getAllRewardClaims(filters);
+
+    if (!result.success || !result.data) {
+      return res.status(400).json({
+        success: false,
+        message: "Failed to fetch rewards for export"
+      });
+    }
+
+    const rewards = result.data;
+
+    // Build CSV content
+    const csvHeader = "ID,User Name,Email,Rank,Reward Type,Size,Color,Status,Claimed Date,Tracking Number,Full Address\n";
+    
+    const csvRows = rewards.map(reward => {
+      const userName = `${reward.userId?.fname || ''} ${reward.userId?.lname || ''}`.trim();
+      const email = reward.userId?.email || '';
+      const address = reward.shippingAddress 
+        ? `"${reward.shippingAddress.fullName}, ${reward.shippingAddress.addressLine1}${reward.shippingAddress.addressLine2 ? ', ' + reward.shippingAddress.addressLine2 : ''}, ${reward.shippingAddress.city}, ${reward.shippingAddress.state} ${reward.shippingAddress.postalCode}, ${reward.shippingAddress.country}"`
+        : '';
+
+      return [
+        reward._id,
+        `"${userName}"`,
+        email,
+        reward.rank,
+        reward.rewardType,
+        reward.size || '',
+        reward.color || '',
+        reward.status,
+        new Date(reward.claimedDate).toLocaleDateString(),
+        reward.trackingNumber || '',
+        address
+      ].join(',');
+    });
+
+    const csv = csvHeader + csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename=rewards_export_${Date.now()}.csv`);
+    res.status(200).send(csv);
+
+    adminPayoutLogger.success("Rewards CSV exported", { count: rewards.length });
+  } catch (error) {
+    adminPayoutLogger.error("Error exporting rewards CSV", error);
     return res.status(500).json({
       success: false,
       message: "Error exporting CSV",
