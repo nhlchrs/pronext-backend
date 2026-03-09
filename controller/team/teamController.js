@@ -1343,17 +1343,126 @@ export const getAllTeamMembers = async () => {
   try {
     teamLogger.start("Fetching all team members");
 
+    // Import CommissionModel
+    const CommissionModel = (await import("../../models/commissionModel.js")).default;
+
     const members = await TeamMember.find()
       .populate("userId", "fname lname email phone createdAt")
       .populate("sponsorId", "fname lname")
       .sort({ directCount: -1 });
+
+    // Load ALL team members for recursive counting (same as getSimpleTeamMembersList)
+    const allMembersRaw = await TeamMember.find({});
+    const memberMap = {};
+
+    // Build map using RAW userId ObjectIds as keys
+    for (let i = 0; i < allMembersRaw.length; i++) {
+      const m = allMembersRaw[i];
+      if (m && m.userId) {
+        const userIdKey = m.userId.toString();
+        memberMap[userIdKey] = m;
+      }
+    }
+
+    // Recursive subtree counter - uses RAW memberMap (same logic as rewards page)
+    const countSubtree = (userIdString) => {
+      if (!userIdString) return 0;
+
+      const node = memberMap[userIdString];
+      if (!node) return 0;
+
+      let count = 1;
+
+      const children = node.teamMembers || [];
+
+      for (let i = 0; i < children.length; i++) {
+        const childId = children[i];
+
+        if (!childId) continue;
+
+        count += countSubtree(childId.toString());
+      }
+
+      return count;
+    };
+
+    // Calculate real-time earnings and team counts for each member
+    const membersWithEarnings = await Promise.all(
+      members.map(async (member) => {
+        // Calculate earnings from CommissionModel
+        const commissionTotal = await CommissionModel.aggregate([
+          {
+            $match: { userId: member.userId._id }
+          },
+          {
+            $group: {
+              _id: null,
+              totalEarnings: { $sum: "$netAmount" }
+            }
+          }
+        ]);
+
+        const totalEarnings = commissionTotal.length > 0 ? commissionTotal[0].totalEarnings : 0;
+
+        // Calculate total team using same logic as rewards page
+        const teamMembersArray = member.teamMembers || [];
+        let totalLeftPro = 0;
+        let totalRightPro = 0;
+        let totalMain = 0;
+
+        for (let i = 0; i < teamMembersArray.length; i++) {
+          const rawId = teamMembersArray[i];
+          if (!rawId) continue;
+
+          const userIdString = rawId.toString();
+          const tm = memberMap[userIdString];
+
+          if (!tm) continue;
+
+          const subtreeSize = countSubtree(userIdString);
+
+          if (tm.position === "left") {
+            totalLeftPro += subtreeSize;
+          } else if (tm.position === "right") {
+            totalRightPro += subtreeSize;
+          } else {
+            totalMain += subtreeSize;
+          }
+        }
+
+        // Exclude main position members from total downline count
+        const totalDownline = totalLeftPro + totalRightPro;
+
+        return {
+          ...member.toObject(),
+          totalEarnings,
+          totalDownline
+        };
+      })
+    );
+
+    // Calculate aggregate statistics from real commission data
+    const allUserIds = membersWithEarnings.map(m => m.userId._id);
+    const totalCommissionStats = await CommissionModel.aggregate([
+      {
+        $match: { userId: { $in: allUserIds } }
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: "$netAmount" }
+        }
+      }
+    ]);
+
+    const totalEarnings = totalCommissionStats.length > 0 ? totalCommissionStats[0].totalEarnings : 0;
+    const averageEarnings = membersWithEarnings.length > 0 ? totalEarnings / membersWithEarnings.length : 0;
 
     const stats = await TeamMember.aggregate([
       {
         $group: {
           _id: null,
           totalMembers: { $sum: 1 },
-          totalEarnings: { $sum: "$totalEarnings" },
           averageDirects: { $avg: "$directCount" },
           maxDirects: { $max: "$directCount" },
         },
@@ -1373,9 +1482,10 @@ export const getAllTeamMembers = async () => {
     return {
       success: true,
       data: {
-        members,
+        members: membersWithEarnings,
         totalMembers: stats[0]?.totalMembers || 0,
-        totalEarnings: stats[0]?.totalEarnings || 0,
+        totalEarnings,
+        averageEarnings,
         averageDirects: stats[0]?.averageDirects || 0,
         levelBreakdown,
       },
@@ -1394,15 +1504,36 @@ export const getAllTeamStatistics = async () => {
   try {
     teamLogger.start("Fetching team statistics");
 
+    // Import CommissionModel
+    const CommissionModel = (await import("../../models/commissionModel.js")).default;
+
+    // Get all team members
+    const allMembers = await TeamMember.find();
+    const allUserIds = allMembers.map(m => m.userId);
+
+    // Calculate real-time total earnings from CommissionModel
+    const totalCommissionStats = await CommissionModel.aggregate([
+      {
+        $match: { userId: { $in: allUserIds } }
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: "$netAmount" }
+        }
+      }
+    ]);
+
+    const totalEarnings = totalCommissionStats.length > 0 ? totalCommissionStats[0].totalEarnings : 0;
+    const totalMembers = allMembers.length;
+    const averageEarnings = totalMembers > 0 ? totalEarnings / totalMembers : 0;
+
     const stats = await TeamMember.aggregate([
       {
         $group: {
           _id: null,
-          totalMembers: { $sum: 1 },
-          totalEarnings: { $sum: "$totalEarnings" },
           averageDirects: { $avg: "$directCount" },
           maxDirects: { $max: "$directCount" },
-          averageEarnings: { $avg: "$totalEarnings" },
         },
       },
     ]);
@@ -1424,11 +1555,11 @@ export const getAllTeamStatistics = async () => {
     return {
       success: true,
       data: {
-        totalMembers: stats[0]?.totalMembers || 0,
-        totalEarnings: stats[0]?.totalEarnings || 0,
+        totalMembers,
+        totalEarnings,
         averageDirects: stats[0]?.averageDirects || 0,
         maxDirects: stats[0]?.maxDirects || 0,
-        averageEarnings: stats[0]?.averageEarnings || 0,
+        averageEarnings,
         levelBreakdown,
         qualifiedMembers,
       },
