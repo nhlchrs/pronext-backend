@@ -734,6 +734,88 @@ export const getAdvancedAnalytics = async (req, res) => {
 };
 
 /**
+ * Calculate total binary commission across all users from team structure
+ */
+const calculateTotalBinaryCommission = async () => {
+  try {
+    const TeamMember = (await import("../../models/teamModel.js")).default;
+    
+    // Get all team members once
+    const allMembers = await TeamMember.find({});
+    let totalBinaryCommission = 0;
+    
+    // Build memberMap once outside the loop
+    const memberMap = {};
+    for (const m of allMembers) {
+      if (m && m.userId) {
+        memberMap[m.userId.toString()] = m;
+      }
+    }
+    
+    // Recursive function to count ALL descendants (regardless of position)
+    const countSubtree = (userIdString) => {
+      if (!userIdString) return 0;
+      const node = memberMap[userIdString];
+      if (!node) return 0;
+      
+      let count = 1; // Count the node itself
+      const children = node.teamMembers || [];
+      
+      for (const childId of children) {
+        if (!childId) continue;
+        count += countSubtree(childId.toString());
+      }
+      
+      return count;
+    };
+    
+    // Calculate binary commission for each user
+    for (const member of allMembers) {
+      if (!member.teamMembers || member.teamMembers.length === 0) {
+        continue;
+      }
+      
+      let totalLeftPro = 0;
+      let totalRightPro = 0;
+      
+      // For each direct child, count them + all their descendants
+      for (const childId of member.teamMembers) {
+        if (!childId) continue;
+        const childIdStr = childId.toString();
+        const childNode = memberMap[childIdStr];
+        
+        if (!childNode) continue;
+        
+        // Count this child and all descendants under it
+        const subtreeSize = countSubtree(childIdStr);
+        
+        // Add to appropriate leg based on child's position
+        if (childNode.position === "left") {
+          totalLeftPro += subtreeSize;
+        } else if (childNode.position === "right") {
+          totalRightPro += subtreeSize;
+        }
+      }
+      
+      // Calculate PV and commission
+      const leftProPV = totalLeftPro * 94.5;
+      const rightProPV = totalRightPro * 94.5;
+      const weakerLegPV = Math.min(leftProPV, rightProPV);
+      const matchedVolume = weakerLegPV;
+      const bonusPercent = member.binaryBonusPercent || 0;
+      const commissionAmount = matchedVolume * (bonusPercent / 100);
+      
+      totalBinaryCommission += commissionAmount;
+    }
+    
+    return parseFloat(totalBinaryCommission.toFixed(2));
+  } catch (error) {
+    analyticsLogger.error("Error calculating binary commission", error);
+    return 0;
+  }
+};
+
+/**
  * Get Analytics Data for Admin Panel
  * GET /api/admin/analytics
  */
@@ -741,50 +823,127 @@ export const getAdminAnalytics = async (req, res) => {
   try {
     analyticsLogger.start("Fetching admin analytics data");
 
-    // Get total users count
-    const totalUsers = await userModel.countDocuments({ isDeleted: { $ne: true } });
+    // Import models dynamically
+    const CommissionModel = (await import("../../models/commissionModel.js")).default;
+    const PayoutModel = (await import("../../models/payoutModel.js")).default;
+    const BinaryRewardModel = (await import("../../models/binaryRewardModel.js")).default;
 
-    // Get active users (logged in within last 30 days or not suspended/blocked)
+    // Date ranges
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    const sixtyDaysAgo = new Date();
+    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+    // User Metrics
+    const totalUsers = await userModel.countDocuments({ isDeleted: { $ne: true } });
     const activeUsers = await userModel.countDocuments({
       isDeleted: { $ne: true },
       isSuspended: false,
       isBlocked: false
     });
+    const subscribedUsers = await userModel.countDocuments({
+      isDeleted: { $ne: true },
+      subscriptionStatus: true
+    });
 
-    // Get revenue from AnalyticsModel or calculate from payments
-    let totalRevenue = 0;
-    try {
-      const revenueAnalytics = await AnalyticsModel.findOne({}).sort({ updatedAt: -1 });
-      if (revenueAnalytics && revenueAnalytics.revenue) {
-        totalRevenue = revenueAnalytics.revenue.total || 0;
-      }
-    } catch (err) {
-      analyticsLogger.warn("Could not fetch revenue from analytics", err);
-    }
-
-    // Calculate growth rate (comparing last 30 days vs previous 30 days)
-    const sixtyDaysAgo = new Date();
-    sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-    
+    // Calculate growth rate
     const previousPeriodUsers = await userModel.countDocuments({
       createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo }
     });
-    
     const currentPeriodUsers = await userModel.countDocuments({
       createdAt: { $gte: thirtyDaysAgo }
     });
-
     const monthlyGrowth = previousPeriodUsers > 0 
       ? ((currentPeriodUsers - previousPeriodUsers) / previousPeriodUsers * 100).toFixed(1)
-      : 0;
+      : (currentPeriodUsers > 0 ? 100 : 0);
+
+    // Revenue Metrics
+    const subscriptionRevenue = subscribedUsers * 100; // Assuming $100 per subscription
+    
+    // Commission breakdown
+    const commissionStats = await CommissionModel.aggregate([
+      {
+        $group: {
+          _id: "$commissionType",
+          totalAmount: { $sum: "$netAmount" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    const totalCommissions = await CommissionModel.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$netAmount" }
+        }
+      }
+    ]);
+    const commissionsSum = totalCommissions.length > 0 ? totalCommissions[0].total : 0;
+
+    // Payout Metrics
+    const payoutStats = await PayoutModel.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          totalAmount: { $sum: "$netAmount" },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+    
+    const completedPayouts = await PayoutModel.aggregate([
+      { $match: { status: "completed" } },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$netAmount" }
+        }
+      }
+    ]);
+    const completedPayoutsSum = completedPayouts.length > 0 ? completedPayouts[0].total : 0;
+
+    // Binary Rewards
+    const binaryRewardsStats = await BinaryRewardModel.countDocuments();
+    const claimedRewards = await BinaryRewardModel.countDocuments({ status: { $ne: "claimed" } });
+
+    // Calculate real-time binary commission from team structure
+    analyticsLogger.debug("Calculating real-time binary commission from team structure");
+    const calculatedBinaryCommission = await calculateTotalBinaryCommission();
+    
+    // Total Revenue
+    const totalRevenue = subscriptionRevenue;
 
     const analytics = {
       totalRevenue,
       totalUsers,
       activeUsers,
-      monthlyGrowth: parseFloat(monthlyGrowth)
+      subscribedUsers,
+      monthlyGrowth: parseFloat(monthlyGrowth),
+      // Detailed breakdowns
+      commissions: {
+        total: commissionsSum,
+        breakdown: commissionStats,
+        byType: {
+          direct_bonus: commissionStats.find(c => c._id === "direct_bonus")?.totalAmount || 0,
+          level_income: commissionStats.find(c => c._id === "level_income")?.totalAmount || 0,
+          binary_bonus: calculatedBinaryCommission, // Use calculated binary commission instead of stored records
+          reward_bonus: commissionStats.find(c => c._id === "reward_bonus")?.totalAmount || 0
+        }
+      },
+      payouts: {
+        total: completedPayoutsSum,
+        breakdown: payoutStats,
+        pending: payoutStats.find(p => p._id === "pending")?.totalAmount || 0,
+        completed: completedPayoutsSum,
+        processing: payoutStats.find(p => p._id === "processing")?.totalAmount || 0
+      },
+      rewards: {
+        total: binaryRewardsStats,
+        claimed: binaryRewardsStats - claimedRewards,
+        processed: claimedRewards
+      }
     };
 
     analyticsLogger.success("Admin analytics data fetched successfully", analytics);
