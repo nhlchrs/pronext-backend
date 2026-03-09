@@ -22,6 +22,7 @@ import {
   getRankColor,
 } from "../../helpers/binaryRankHelper.js";
 import logger from "../../helpers/logger.js";
+import mongoose from "mongoose";
 
 const teamLogger = logger.module("TEAM_CONTROLLER");
 
@@ -2678,106 +2679,187 @@ export const getSimpleTeamMembersList = async (userId) => {
       };
     }
 
-    const teamMemberRecords = await TeamMember.find({
-      userId: { $in: teamMembersArray }
-    }).populate("userId", "fname lname email");
+    // Load ALL team members WITHOUT population first (for accurate counting)
+    const allMembersRaw = await TeamMember.find({});
+    const memberMap = {};
+
+    // Build map using RAW userId ObjectIds as keys
+    for (let i = 0; i < allMembersRaw.length; i++) {
+      const m = allMembersRaw[i];
+      if (m && m.userId) {
+        const userIdKey = m.userId.toString();
+        memberMap[userIdKey] = m;
+      }
+    }
+
+    // Now load populated data separately for display
+    const allMembersPopulated = await TeamMember.find({}).populate("userId", "fname lname email");
+    const displayMap = {};
+    
+    for (let i = 0; i < allMembersPopulated.length; i++) {
+      const m = allMembersPopulated[i];
+      if (m && m.userId) {
+        const userIdKey = m.userId.id || m.userId._id?.toString() || m.userId.toString();
+        displayMap[userIdKey] = m;
+      }
+    }
+
+    // Recursive subtree counter - uses RAW memberMap
+    const countSubtree = (userIdString) => {
+      if (!userIdString) return 0;
+
+      const node = memberMap[userIdString];
+      if (!node) return 0;
+
+      let count = 1;
+
+      const children = node.teamMembers || [];
+
+      for (let i = 0; i < children.length; i++) {
+        const childId = children[i];
+
+        if (!childId) continue;
+
+        count += countSubtree(childId.toString());
+      }
+
+      return count;
+    };
 
     let totalLeftPro = 0;
     let totalRightPro = 0;
     let totalMain = 0;
 
-    const membersListPromises = teamMemberRecords.map(async (tm) => {
+    const membersList = [];
+
+    // Debug: Log memberMap keys
+    teamLogger.debug("MemberMap built", { 
+      totalMembersRaw: allMembersRaw.length,
+      totalMembersPopulated: allMembersPopulated.length,
+      mapKeys: Object.keys(memberMap).length,
+      displayMapKeys: Object.keys(displayMap).length,
+      teamMembersArrayLength: teamMembersArray.length
+    });
+
+    for (let i = 0; i < teamMembersArray.length; i++) {
+
+      const rawId = teamMembersArray[i];
+
+      if (!rawId) continue;
+
+      const userIdString = rawId.toString();
+
+      // Use RAW memberMap for counting
+      const tm = memberMap[userIdString];
+      // Use displayMap for user details
+      const tmDisplay = displayMap[userIdString];
+
+      if (!tm) {
+        teamLogger.warn("Team member not found in map", { 
+          userIdString, 
+          sampleMapKeys: Object.keys(memberMap).slice(0, 3) 
+        });
+        continue;
+      }
+
+      const subtreeSize = countSubtree(userIdString);
+
+      teamLogger.debug("Subtree counted", { 
+        userId: userIdString, 
+        position: tm.position, 
+        subtreeSize,
+        directChildren: (tm.teamMembers || []).length
+      });
+
+      if (tm.position === "left") {
+        totalLeftPro += subtreeSize;
+      } else if (tm.position === "right") {
+        totalRightPro += subtreeSize;
+      } else {
+        totalMain += subtreeSize;
+      }
 
       const childTeamMembers = tm.teamMembers || [];
-      let childrenDetails = [];
 
-      if (childTeamMembers.length > 0) {
+      const childrenDetails = [];
 
-        const childRecords = await TeamMember.find({
-          userId: { $in: childTeamMembers }
-        }).populate("userId", "fname lname email");
+      for (let j = 0; j < childTeamMembers.length; j++) {
 
-        childrenDetails = childRecords.map(child => {
-          return {
-            userId: child.userId?._id || child.userId,
-            email: child.userId?.email || "N/A",
-            name: child.userId
-              ? `${child.userId.fname} ${child.userId.lname}`
-              : "N/A",
-            position: child.position || "main",
-            directCount: child.directCount || 0,
-            referralCode: child.referralCode,
-          };
+        const childId = childTeamMembers[j];
+
+        if (!childId) continue;
+
+        const childIdString = childId.toString();
+        const childDisplay = displayMap[childIdString];
+
+        if (!childDisplay) continue;
+
+        childrenDetails.push({
+          userId: childDisplay.userId?._id || childDisplay.userId?.id || childId,
+          email: childDisplay.userId?.email || "N/A",
+          name: childDisplay.userId
+            ? `${childDisplay.userId.fname} ${childDisplay.userId.lname}`
+            : "N/A",
+          position: childDisplay.position || "main",
+          directCount: childDisplay.directCount || 0,
+          referralCode: childDisplay.referralCode,
         });
       }
 
-      // Contribution = member itself + their direct children
-      const contribution = 1 + (tm.directCount || 0);
-
-      if (tm.position === "left") {
-        totalLeftPro += contribution;
-      } else if (tm.position === "right") {
-        totalRightPro += contribution;
-      } else {
-        totalMain += contribution;
-      }
-
-      return {
-        userId: tm.userId?._id || tm.userId,
-        email: tm.userId?.email || "N/A",
-        name: tm.userId
-          ? `${tm.userId.fname} ${tm.userId.lname}`
+      membersList.push({
+        userId: tmDisplay?.userId?._id || tmDisplay?.userId?.id || rawId,
+        email: tmDisplay?.userId?.email || "N/A",
+        name: tmDisplay?.userId
+          ? `${tmDisplay.userId.fname} ${tmDisplay.userId.lname}`
           : "N/A",
         position: tm.position || "main",
         directCount: tm.directCount || 0,
         referralCode: tm.referralCode,
         teamMembers: childrenDetails,
-      };
-    });
-
-    const membersList = await Promise.all(membersListPromises);
+      });
+    }
 
     const totalDirectCount = totalLeftPro + totalRightPro + totalMain;
 
-    // Calculate total PV (each member generates 94.5 PV)
+    // PV calculations
     const totalPV = totalDirectCount * 94.5;
     const leftProPV = totalLeftPro * 94.5;
     const rightProPV = totalRightPro * 94.5;
     const mainPV = totalMain * 94.5;
 
-    // ========== RANK UPDATE LOGIC BASED ON DIRECT COUNT ==========
-    // Use totalDirectCount as totalActiveAffiliates for rank calculation
+    // Rank update
     const rankData = calculateBinaryRank(totalDirectCount);
     const previousRank = member.binaryRank;
-    
+
     member.binaryRank = rankData.name;
     member.binaryBonusPercent = rankData.bonusPercent;
 
-    // ========== BINARY COMMISSION CALCULATION (1:1 MATCHING - WEAKER LEG) ==========
-    // Calculate weaker leg - this is the matched volume (1:1 matching)
+    // Binary commission
     const weakerLegPV = Math.min(leftProPV, rightProPV);
-    const matchedVolume = weakerLegPV; // Matched = Weaker leg
-    
-    // Calculate carry forward (remaining unmatched PV from each leg)
+    const matchedVolume = weakerLegPV;
+
     const carryForwardLeft = leftProPV - matchedVolume;
     const carryForwardRight = rightProPV - matchedVolume;
-    
-    // Calculate commission based on matched volume and rank bonus percent
+
     const commissionAmount = matchedVolume * (member.binaryBonusPercent / 100);
-    
-    // Store carry forward values in member document
+
     member.carryForwardLeftPV = carryForwardLeft;
     member.carryForwardRightPV = carryForwardRight;
-    // ========== END BINARY COMMISSION CALCULATION ==========
-    
-    // Track highest rank achieved (never decreases)
-    const rankHierarchy = ["NONE", "IGNITOR", "SPARK", "RISER", "PIONEER", "INNOVATOR", "TRAILBLAZER", "CATALYST", "MOGUL", "VANGUARD", "LUMINARY", "SOVEREIGN", "ZENITH"];
+
+    // Rank tracking
+    const rankHierarchy = [
+      "NONE","IGNITOR","SPARK","RISER","PIONEER","INNOVATOR",
+      "TRAILBLAZER","CATALYST","MOGUL","VANGUARD",
+      "LUMINARY","SOVEREIGN","ZENITH"
+    ];
+
     const currentRankIndex = rankHierarchy.indexOf(member.binaryRank);
     const highestRankIndex = rankHierarchy.indexOf(member.highestRankAchieved || "NONE");
-    
+
     if (currentRankIndex > highestRankIndex) {
       member.highestRankAchieved = member.binaryRank;
       member.highestRankAchievedDate = new Date();
+
       teamLogger.info("New highest rank achieved", {
         userId,
         newRank: member.binaryRank,
@@ -2785,10 +2867,9 @@ export const getSimpleTeamMembersList = async (userId) => {
         totalDirectCount,
       });
     }
-    
-    // Save updated rank information
+
     await member.save();
-    
+
     if (previousRank !== member.binaryRank) {
       teamLogger.info("Rank updated based on direct count", {
         userId,
@@ -2798,7 +2879,6 @@ export const getSimpleTeamMembersList = async (userId) => {
         totalDirectCount,
       });
     }
-    // ========== END RANK UPDATE LOGIC ==========
 
     teamLogger.success("Simple team members list retrieved with rank update", {
       userId,
@@ -2820,12 +2900,12 @@ export const getSimpleTeamMembersList = async (userId) => {
         leftProCount: totalLeftPro,
         rightProCount: totalRightPro,
         mainCount: totalMain,
-        totalPV: totalPV,
-        leftProPV: leftProPV,
-        rightProPV: rightProPV,
-        mainPV: mainPV,
-        weakerLegPV: weakerLegPV,
-        matchedVolume: matchedVolume,
+        totalPV,
+        leftProPV,
+        rightProPV,
+        mainPV,
+        weakerLegPV,
+        matchedVolume,
         commissionAmount: parseFloat(commissionAmount.toFixed(2)),
         carryForwardLeft: parseFloat(carryForwardLeft.toFixed(2)),
         carryForwardRight: parseFloat(carryForwardRight.toFixed(2)),
